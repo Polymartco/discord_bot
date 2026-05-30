@@ -25,12 +25,38 @@ echo -e "${RESET}"
 
 [[ "$EUID" -eq 0 ]] && die "Don't run as root. Use a regular user with sudo access."
 
+# ── Wait for apt/dpkg locks ───────────────────────────────────────────────────
+wait_for_apt() {
+  local locks=(
+    /var/lib/dpkg/lock-frontend
+    /var/lib/dpkg/lock
+    /var/cache/apt/archives/lock
+  )
+  local printed=false
+  while true; do
+    local busy=false
+    for lock in "${locks[@]}"; do
+      if ! sudo flock -n "$lock" /bin/true 2>/dev/null; then
+        busy=true; break
+      fi
+    done
+    [[ "$busy" == false ]] && break
+    if [[ "$printed" == false ]]; then
+      warn "apt is locked by another process (unattended-upgrades) — waiting..."
+      printed=true
+    fi
+    sleep 5
+  done
+}
+
 # ── 1. System packages ────────────────────────────────────────────────────────
 header "System packages"
 
-info "Waiting for apt lock and updating package lists..."
+wait_for_apt
+info "Updating package lists..."
 sudo apt-get update
 
+wait_for_apt
 info "Installing build tools..."
 sudo apt-get install -y \
   build-essential \
@@ -39,7 +65,10 @@ sudo apt-get install -y \
   ca-certificates \
   gnupg
 
-success "System packages ready"
+# Disable unattended-upgrades — on a server you control, manual updates are safer
+# and this prevents apt lock conflicts on every future script run.
+sudo systemctl disable --now unattended-upgrades 2>/dev/null || true
+success "System packages ready (unattended-upgrades disabled)"
 
 # ── 2. Node.js ────────────────────────────────────────────────────────────────
 header "Node.js"
@@ -60,9 +89,9 @@ if [[ "$needs_node" == true ]]; then
   echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
     | sudo tee /etc/apt/sources.list.d/nodesource.list
   info "Updating apt with NodeSource repo..."
-  sudo apt-get update
+  wait_for_apt && sudo apt-get update
   info "Installing nodejs package..."
-  sudo apt-get install -y nodejs
+  wait_for_apt && sudo apt-get install -y nodejs
 fi
 
 success "Node.js $(node -v)"
