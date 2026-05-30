@@ -15,6 +15,7 @@
 - Charts:         canvas (node-canvas — price history graphs as PNG attachments)
 - HTTP:           native fetch (Node 18+) or undici
 - Multi-server:   single process, one SQLite file, guild_id on every row
+- Account linking: Discord users can link to their polymart.co account for portfolio sync
 
 ---
 
@@ -78,7 +79,12 @@ npm start        ← run the bot
 ```
 DISCORD_TOKEN=your_bot_token
 CLIENT_ID=your_application_id
+BOT_API_KEY=<shared secret from Polymart server .env BOT_API_KEY>
+POLYMART_BASE_URL=https://polymart.co/api/v1
 ```
+
+BOT_API_KEY must match the `BOT_API_KEY` environment variable on the Polymart server.
+All `/bot/discord/*` requests include `Authorization: Bearer ${process.env.BOT_API_KEY}`.
 
 ---
 
@@ -155,6 +161,15 @@ db.exec(`
     asset_type  TEXT NOT NULL DEFAULT 'stock',
     added_at    INTEGER NOT NULL DEFAULT (unixepoch()),
     PRIMARY KEY (guild_id, user_id, ticker)
+  );
+
+  -- Polymart account links (global — not per-guild)
+  CREATE TABLE IF NOT EXISTS polymart_links (
+    discord_user_id TEXT    PRIMARY KEY,
+    clerk_user_id   TEXT    NOT NULL,
+    portfolio_id    INTEGER NOT NULL,
+    display_name    TEXT,
+    linked_at       INTEGER NOT NULL DEFAULT (unixepoch())
   );
 
   CREATE TABLE IF NOT EXISTS price_alerts (
@@ -239,6 +254,19 @@ export const stmt = {
   getWatchlist:    db.prepare('SELECT * FROM watchlist WHERE guild_id = ? AND user_id = ?'),
   addWatch:        db.prepare('INSERT OR IGNORE INTO watchlist (guild_id, user_id, ticker, asset_type) VALUES (?, ?, ?, ?)'),
   removeWatch:     db.prepare('DELETE FROM watchlist WHERE guild_id = ? AND user_id = ? AND ticker = ?'),
+
+  // Polymart account links (keyed by Discord user ID, not guild)
+  getLink:       db.prepare('SELECT * FROM polymart_links WHERE discord_user_id = ?'),
+  saveLink:      db.prepare(`
+    INSERT INTO polymart_links (discord_user_id, clerk_user_id, portfolio_id, display_name)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(discord_user_id) DO UPDATE SET
+      clerk_user_id = excluded.clerk_user_id,
+      portfolio_id  = excluded.portfolio_id,
+      display_name  = excluded.display_name,
+      linked_at     = unixepoch()
+  `),
+  deleteLink:    db.prepare('DELETE FROM polymart_links WHERE discord_user_id = ?'),
 
   // Alerts
   getAlerts:       db.prepare('SELECT * FROM price_alerts WHERE guild_id = ? AND user_id = ?'),
@@ -616,6 +644,80 @@ for (const folder of folders) {
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
 console.log(`Registered ${commands.length} commands.`);
+```
+
+---
+
+## Polymart Bot API helper
+
+```js
+// src/botApi.js — calls Polymart's bot-specific endpoints
+const BASE = process.env.POLYMART_BASE_URL ?? 'https://polymart.co/api/v1';
+const KEY  = process.env.BOT_API_KEY;
+
+export async function botApi(method, path, body) {
+  const res = await fetch(`${BASE}/bot${path}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${KEY}`,
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error?.message || json.error || `Bot API error ${res.status}`);
+  return json.data ?? json;
+}
+```
+
+---
+
+## Linked-user trade routing pattern
+
+All portfolio commands check for a Polymart link first. Linked users get server-authoritative
+portfolio data; unlinked users fall back to local SQLite.
+
+```js
+// In any portfolio command (buy, sell, portfolio, balance, profit, history):
+import { stmt } from '../../db.js';
+import { botApi } from '../../botApi.js';
+
+async function execute(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+  const link = stmt.getLink.get(interaction.user.id);
+
+  if (link) {
+    try {
+      // Use Polymart server — linked user path
+      const data = await botApi('GET', `/discord/portfolio/${interaction.user.id}`);
+      // ... build embed from data.positions, data.cashBalance
+    } catch (err) {
+      if (err.message.includes('404') || err.message.includes('No Polymart account')) {
+        // Link was removed from the website — clean up locally and fall back
+        stmt.deleteLink.run(interaction.user.id);
+        // fall through to local SQLite path below
+      } else {
+        return interaction.editReply({ content: `❌ Polymart API error: ${err.message}` });
+      }
+    }
+  }
+
+  // Local SQLite path (unlinked users, or after stale-link cleanup)
+  // ... existing SQLite logic
+}
+```
+
+For `/buy` and `/sell` on a linked user:
+```js
+const result = await botApi('POST', '/discord/order', {
+  discordUserId: interaction.user.id,
+  portfolioId:   link.portfolio_id,   // from polymart_links row
+  symbol:        ticker,
+  assetType,
+  side:          'buy',              // or 'sell'
+  quantity,
+});
+// result: { ok, side, symbol, quantity, executedPrice, total, realizedPnl, newCashBalance }
 ```
 
 ---
@@ -1127,6 +1229,126 @@ Set, list, or clear price alerts. Subcommands: set, list, clear.
 // Subcommand: list — stmt.getAlerts.all(guildId, userId) → show as embed
 // Subcommand: clear — options: id (integer) → stmt.deleteAlert.run(id, userId)
 // Max 5 alerts per user per guild (check before inserting)
+```
+
+---
+
+### /link <code>
+
+Link your Discord account to polymart.co for portfolio sync.
+
+```js
+// commands/portfolio/link.js
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { stmt } from '../../db.js';
+import { botApi } from '../../botApi.js';
+import { GOLD, errorEmbed } from '../../utils.js';
+
+export default {
+  data: new SlashCommandBuilder()
+    .setName('link')
+    .setDescription('Link your Discord to your Polymart account')
+    .addStringOption(o =>
+      o.setName('code')
+       .setDescription('The 6-digit code from polymart.co/account')
+       .setRequired(true)
+       .setMinLength(6)
+       .setMaxLength(7)   // allow "123 456" with space
+    ),
+
+  async execute(interaction) {
+    await interaction.deferReply({ ephemeral: true });
+
+    const rawCode = interaction.options.getString('code').replace(/\s/g, '');
+    if (!/^\d{6}$/.test(rawCode)) {
+      return interaction.editReply({ embeds: [errorEmbed('Code must be a 6-digit number.')] });
+    }
+
+    // Check if already linked
+    const existing = stmt.getLink.get(interaction.user.id);
+    if (existing) {
+      return interaction.editReply({ embeds: [errorEmbed(`Already linked to **${existing.display_name ?? 'a Polymart account'}**. Run \`/unlink\` first.`)] });
+    }
+
+    let result;
+    try {
+      result = await botApi('POST', '/discord/verify', {
+        code:            rawCode,
+        discordUserId:   interaction.user.id,
+        discordUsername: interaction.user.username,
+      });
+    } catch (err) {
+      const msg = err.message.toLowerCase();
+      if (msg.includes('expired') || msg.includes('not found') || msg.includes('already used')) {
+        return interaction.editReply({ embeds: [errorEmbed('Code not found, expired, or already used. Generate a new one at polymart.co/account.')] });
+      }
+      return interaction.editReply({ embeds: [errorEmbed(`Link failed: ${err.message}`)] });
+    }
+
+    // Cache the link locally
+    stmt.saveLink.run(
+      interaction.user.id,
+      result.clerkId,
+      result.defaultPortfolioId,
+      result.displayName,
+    );
+
+    const embed = new EmbedBuilder()
+      .setTitle('✅ Linked to Polymart')
+      .setColor(GOLD)
+      .setDescription(`Your Discord is now linked to **${result.displayName}** on polymart.co.\n\nYour trades and portfolio are now synced — use \`/portfolio\` to check your positions.`)
+      .addFields(
+        { name: 'Portfolio', value: result.portfolioName ?? 'Default',        inline: true },
+        { name: 'Cash',      value: result.cashBalance != null ? `$${Number(result.cashBalance).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '—', inline: true },
+      );
+
+    await interaction.editReply({ embeds: [embed] });
+  },
+};
+```
+
+---
+
+### /unlink
+
+Disconnect your Discord from your polymart.co account.
+
+```js
+// commands/portfolio/unlink.js
+import { SlashCommandBuilder } from 'discord.js';
+import { stmt } from '../../db.js';
+import { botApi } from '../../botApi.js';
+import { successEmbed, errorEmbed } from '../../utils.js';
+
+export default {
+  data: new SlashCommandBuilder()
+    .setName('unlink')
+    .setDescription('Disconnect your Discord from your Polymart account'),
+
+  async execute(interaction) {
+    await interaction.deferReply({ ephemeral: true });
+
+    const link = stmt.getLink.get(interaction.user.id);
+    if (!link) {
+      return interaction.editReply({ embeds: [errorEmbed('Your Discord is not linked to any Polymart account.')] });
+    }
+
+    try {
+      await botApi('DELETE', `/discord/user/${interaction.user.id}`);
+    } catch (err) {
+      // If the link was already removed server-side (404), still clean up locally
+      if (!err.message.includes('404')) {
+        return interaction.editReply({ embeds: [errorEmbed(`Unlink failed: ${err.message}`)] });
+      }
+    }
+
+    stmt.deleteLink.run(interaction.user.id);
+
+    await interaction.editReply({
+      embeds: [successEmbed('Unlinked from Polymart. Your future trades in this server will use the local balance.')],
+    });
+  },
+};
 ```
 
 ---

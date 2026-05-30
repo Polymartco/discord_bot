@@ -1,5 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getOrCreateUser, stmt, getConfig } from '../../db.js';
+import { botApi } from '../../botApi.js';
 import { api } from '../../api.js';
 import { cash, colorOf, GOLD, errorEmbed } from '../../utils.js';
 import { assertGuildSetup, ValidationError } from '../../validate.js';
@@ -21,6 +22,63 @@ export default {
       throw err;
     }
 
+    // ── Linked-user path — server unrealised + local realised ────────────────
+    const link = stmt.getLink.get(user.id);
+    if (link) {
+      try {
+        const data      = await botApi('GET', `/discord/portfolio/${user.id}`);
+        const positions = data.positions ?? [];
+
+        // Unrealised from server positions
+        const unrealised = positions.reduce((s, p) => s + (p.pnl ?? 0), 0);
+        const portValue  = positions.reduce((s, p) => s + (p.value ?? 0), 0);
+        const invested   = positions.reduce((s, p) => s + (p.shares ?? p.quantity ?? 0) * (p.avgCost ?? 0), 0);
+
+        // Realised from local mirrored Discord trade log
+        const allTrades  = stmt.getAllTradesOrdered.all(guildId, user.id);
+        let realisedPnl  = 0, wins = 0, losses = 0;
+        const runAvg = {}, runShares = {};
+        for (const t of allTrades) {
+          if (t.side === 'buy') {
+            const old = runShares[t.ticker] ?? 0, avg = runAvg[t.ticker] ?? 0;
+            const nw  = old + t.shares;
+            runAvg[t.ticker]    = nw > 0 ? (old * avg + t.total) / nw : 0;
+            runShares[t.ticker] = nw;
+          } else if (t.side === 'sell') {
+            const tradePnl = (t.price - (runAvg[t.ticker] ?? 0)) * t.shares;
+            realisedPnl   += tradePnl;
+            runShares[t.ticker] = Math.max(0, (runShares[t.ticker] ?? 0) - t.shares);
+            if (tradePnl >= 0) wins++; else losses++;
+          }
+        }
+
+        const totalPnl  = realisedPnl + unrealised;
+        const totalSells = wins + losses;
+        const winRate    = totalSells > 0 ? `${((wins / totalSells) * 100).toFixed(1)}%` : '—';
+
+        const embed = new EmbedBuilder()
+          .setTitle(`${user.username}'s P&L Summary`)
+          .setColor(colorOf(totalPnl))
+          .addFields(
+            { name: 'Realised P&L',   value: cash(realisedPnl), inline: true },
+            { name: 'Unrealised P&L', value: cash(unrealised),  inline: true },
+            { name: 'Total P&L',      value: cash(totalPnl),    inline: true },
+            { name: 'Win Rate',       value: winRate,            inline: true },
+            { name: 'Closed Trades',  value: String(totalSells), inline: true },
+          )
+          .setFooter({ text: '🔗 Unrealised from polymart.co • Realised from Discord trades only' });
+
+        return interaction.editReply({ embeds: [embed] });
+      } catch (err) {
+        if (err.message.includes('404') || err.message.includes('No Polymart account')) {
+          stmt.deleteLink.run(user.id); // stale — fall through
+        } else {
+          return interaction.editReply({ embeds: [errorEmbed(`Polymart: ${err.message}`)] });
+        }
+      }
+    }
+
+    // ── Local SQLite path ─────────────────────────────────────────────────────
     getOrCreateUser(guildId, user.id, config.starting_balance);
 
     // ── Realised P&L via running-average FIFO ─────────────────────────────────

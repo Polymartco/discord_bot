@@ -1,7 +1,8 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getOrCreateUser, stmt, getConfig } from '../../db.js';
+import { botApi } from '../../botApi.js';
 import { api, ApiError } from '../../api.js';
-import { cash, colorOf, GOLD, errorEmbed } from '../../utils.js';
+import { cash, colorOf, GOLD, BLUE, errorEmbed } from '../../utils.js';
 import { assertGuildSetup, ValidationError } from '../../validate.js';
 
 export default {
@@ -21,6 +22,42 @@ export default {
       throw err;
     }
 
+    // ── Linked-user path — server cash + positions ────────────────────────────
+    const link = stmt.getLink.get(user.id);
+    if (link) {
+      try {
+        const data      = await botApi('GET', `/discord/portfolio/${user.id}`);
+        const positions = data.positions ?? [];
+        const cashBal   = data.cashBalance ?? 0;
+        const portValue = positions.reduce((s, p) => s + (p.value ?? 0), 0);
+        const invested  = positions.reduce((s, p) => s + (p.shares ?? p.quantity ?? 0) * (p.avgCost ?? 0), 0);
+        const unrealised = portValue - invested;
+        const total     = cashBal + portValue;
+
+        const embed = new EmbedBuilder()
+          .setTitle(`${user.username}'s Account`)
+          .setColor(colorOf(unrealised))
+          .addFields(
+            { name: 'Cash Balance',    value: cash(cashBal),          inline: true },
+            { name: 'Portfolio Value', value: cash(portValue),        inline: true },
+            { name: 'Total Value',     value: cash(total),            inline: true },
+            { name: 'Invested',        value: cash(invested),         inline: true },
+            { name: 'Unrealised P&L',  value: cash(unrealised),       inline: true },
+            { name: 'Holdings',        value: String(positions.length), inline: true },
+          )
+          .setFooter({ text: '🔗 Synced from polymart.co' });
+
+        return interaction.editReply({ embeds: [embed] });
+      } catch (err) {
+        if (err.message.includes('404') || err.message.includes('No Polymart account')) {
+          stmt.deleteLink.run(user.id); // stale — fall through
+        } else {
+          return interaction.editReply({ embeds: [errorEmbed(`Polymart: ${err.message}`)] });
+        }
+      }
+    }
+
+    // ── Local SQLite path ─────────────────────────────────────────────────────
     const dbUser   = getOrCreateUser(guildId, user.id, config.starting_balance);
     const holdings = stmt.getAllHoldings.all(guildId, user.id);
 

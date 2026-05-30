@@ -80,6 +80,15 @@ db.exec(`
     created_at  INTEGER NOT NULL DEFAULT (unixepoch())
   );
 
+  -- Polymart account links (global — not per-guild)
+  CREATE TABLE IF NOT EXISTS polymart_links (
+    discord_user_id TEXT    PRIMARY KEY,
+    clerk_user_id   TEXT    NOT NULL,
+    portfolio_id    INTEGER NOT NULL,
+    display_name    TEXT,
+    linked_at       INTEGER NOT NULL DEFAULT (unixepoch())
+  );
+
   CREATE INDEX IF NOT EXISTS idx_trades_guild_user   ON trades(guild_id, user_id);
   CREATE INDEX IF NOT EXISTS idx_holdings_guild_user ON holdings(guild_id, user_id);
   CREATE INDEX IF NOT EXISTS idx_alerts_ticker       ON price_alerts(ticker, asset_type);
@@ -146,6 +155,19 @@ export const stmt = {
   serverLeaderboard: db.prepare(`
     SELECT user_id, balance FROM users WHERE guild_id = ? ORDER BY balance DESC LIMIT 10
   `),
+
+  // Polymart account links (keyed by Discord user ID — cross-guild)
+  getLink:    db.prepare('SELECT * FROM polymart_links WHERE discord_user_id = ?'),
+  saveLink:   db.prepare(`
+    INSERT INTO polymart_links (discord_user_id, clerk_user_id, portfolio_id, display_name)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(discord_user_id) DO UPDATE SET
+      clerk_user_id = excluded.clerk_user_id,
+      portfolio_id  = excluded.portfolio_id,
+      display_name  = excluded.display_name,
+      linked_at     = unixepoch()
+  `),
+  deleteLink: db.prepare('DELETE FROM polymart_links WHERE discord_user_id = ?'),
 };
 
 export function getOrCreateUser(guildId, userId, startingBalance = 10000) {

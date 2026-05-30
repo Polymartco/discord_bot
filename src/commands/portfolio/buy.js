@@ -1,7 +1,8 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getOrCreateUser, getConfig, executeTrade, stmt } from '../../db.js';
+import { botApi } from '../../botApi.js';
 import { detectAssetType, getFreshPrice, getCachedEntry, pricePath, ApiError } from '../../api.js';
-import { cash, colorOf, errorEmbed } from '../../utils.js';
+import { cash, colorOf, GREEN, errorEmbed } from '../../utils.js';
 import {
   ValidationError,
   validateTickerFormat,
@@ -36,7 +37,7 @@ export default {
     const { guildId, user } = interaction;
     const config = getConfig(guildId);
 
-    // ── 1. Input validation ───────────────────────────────────────────────────
+    // ── 0. Input validation (always, regardless of link status) ───────────────
     let ticker, shares, assetType;
     try {
       assertCommandCooldown(user.id, 'trade', 1500);
@@ -50,7 +51,52 @@ export default {
       throw err;
     }
 
-    // ── 2. Ensure user account exists ─────────────────────────────────────────
+    // ── 1. Linked-user path — route order to Polymart server ─────────────────
+    const link = stmt.getLink.get(user.id);
+    if (link) {
+      let result;
+      try {
+        result = await botApi('POST', '/discord/order', {
+          discordUserId: user.id,
+          portfolioId:   link.portfolio_id,
+          symbol:        ticker,
+          assetType,
+          side:          'buy',
+          quantity:      shares,
+        });
+      } catch (err) {
+        if (err.message.includes('404') || err.message.includes('No Polymart account')) {
+          stmt.deleteLink.run(user.id); // stale link — fall through to local
+        } else {
+          return interaction.editReply({ embeds: [errorEmbed(`Polymart: ${err.message}`)] });
+        }
+      }
+
+      if (result) {
+        // Mirror to local trade log so /history still works
+        try {
+          stmt.insertTrade.run(guildId, user.id, ticker, assetType, 'buy',
+            result.quantity, result.executedPrice, result.total, 0);
+        } catch {}
+
+        const embed = new EmbedBuilder()
+          .setColor(GREEN)
+          .setTitle('✅ Order Filled — BUY')
+          .addFields(
+            { name: 'Asset',       value: ticker,                                    inline: true },
+            { name: 'Type',        value: assetType,                                 inline: true },
+            { name: 'Shares',      value: result.quantity.toLocaleString(),           inline: true },
+            { name: 'Price',       value: cash(result.executedPrice),                 inline: true },
+            { name: 'Total Cost',  value: cash(result.total),                         inline: true },
+            { name: 'Cash Left',   value: cash(result.newCashBalance),                inline: true },
+          )
+          .setFooter({ text: `🔗 Executed via polymart.co • ${new Date().toLocaleTimeString()}` });
+
+        return interaction.editReply({ embeds: [embed] });
+      }
+    }
+
+    // ── 2. Ensure user account exists (local path) ────────────────────────────
     const dbUser = getOrCreateUser(guildId, user.id, config.starting_balance);
 
     // ── 3. Read cached price BEFORE the fresh fetch (for slippage detection) ──

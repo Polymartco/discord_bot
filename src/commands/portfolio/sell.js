@@ -1,5 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getOrCreateUser, getConfig, executeTrade, stmt } from '../../db.js';
+import { botApi } from '../../botApi.js';
 import { detectAssetType, getFreshPrice, getCachedEntry, pricePath, ApiError } from '../../api.js';
 import { cash, colorOf, sign, errorEmbed } from '../../utils.js';
 import {
@@ -34,7 +35,7 @@ export default {
     const { guildId, user } = interaction;
     const config = getConfig(guildId);
 
-    // ── 1. Input validation ───────────────────────────────────────────────────
+    // ── 0. Input validation ───────────────────────────────────────────────────
     let ticker, assetType;
     try {
       assertCommandCooldown(user.id, 'trade', 1500);
@@ -46,7 +47,85 @@ export default {
       throw err;
     }
 
-    // ── 2. Verify holding BEFORE fetching price (fast-fail, no wasted API call) ─
+    // ── 1. Linked-user path — route sell to Polymart server ───────────────────
+    const link = stmt.getLink.get(user.id);
+    if (link) {
+      // Resolve "all" by fetching the server position
+      let quantity;
+      const rawShares = interaction.options.getString('shares').trim().toLowerCase();
+      if (rawShares === 'all') {
+        try {
+          const data = await botApi('GET', `/discord/portfolio/${user.id}`);
+          const pos  = (data.positions ?? []).find(p =>
+            (p.symbol ?? p.ticker ?? '').toUpperCase() === ticker
+          );
+          if (!pos || !(pos.shares ?? pos.quantity)) {
+            return interaction.editReply({ embeds: [errorEmbed(`You don't hold any **${ticker}** on Polymart.`)] });
+          }
+          quantity = pos.shares ?? pos.quantity;
+        } catch (err) {
+          if (err.message.includes('404') || err.message.includes('No Polymart account')) {
+            stmt.deleteLink.run(user.id); // stale link — fall through
+          } else {
+            return interaction.editReply({ embeds: [errorEmbed(`Polymart: ${err.message}`)] });
+          }
+        }
+      } else {
+        quantity = parseFloat(rawShares);
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+          return interaction.editReply({ embeds: [errorEmbed('Enter a positive number of shares or "all".')] });
+        }
+      }
+
+      if (quantity != null) {
+        let result;
+        try {
+          result = await botApi('POST', '/discord/order', {
+            discordUserId: user.id,
+            portfolioId:   link.portfolio_id,
+            symbol:        ticker,
+            assetType,
+            side:          'sell',
+            quantity,
+          });
+        } catch (err) {
+          if (err.message.includes('404') || err.message.includes('No Polymart account')) {
+            stmt.deleteLink.run(user.id); // stale — fall through
+          } else {
+            return interaction.editReply({ embeds: [errorEmbed(`Polymart: ${err.message}`)] });
+          }
+        }
+
+        if (result) {
+          // Mirror to local trade log
+          try {
+            stmt.insertTrade.run(guildId, user.id, ticker, assetType, 'sell',
+              result.quantity, result.executedPrice, result.total, 0);
+          } catch {}
+
+          const pnlStr = result.realizedPnl != null
+            ? ` (P&L: ${cash(result.realizedPnl)})`
+            : '';
+
+          const embed = new EmbedBuilder()
+            .setColor(colorOf(result.realizedPnl ?? 0))
+            .setTitle('✅ Order Filled — SELL')
+            .addFields(
+              { name: 'Asset',        value: ticker,                                    inline: true },
+              { name: 'Type',         value: assetType,                                 inline: true },
+              { name: 'Shares Sold',  value: result.quantity.toLocaleString(),           inline: true },
+              { name: 'Price',        value: cash(result.executedPrice),                 inline: true },
+              { name: 'Proceeds',     value: cash(result.total),                         inline: true },
+              { name: 'Cash Left',    value: cash(result.newCashBalance),                inline: true },
+            )
+            .setFooter({ text: `🔗 Executed via polymart.co${pnlStr} • ${new Date().toLocaleTimeString()}` });
+
+          return interaction.editReply({ embeds: [embed] });
+        }
+      }
+    }
+
+    // ── 2. Verify holding BEFORE fetching price (local path fast-fail) ────────
     getOrCreateUser(guildId, user.id, config.starting_balance);
     const holding = stmt.getHolding.get(guildId, user.id, ticker);
 

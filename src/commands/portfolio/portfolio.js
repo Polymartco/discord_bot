@@ -1,5 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getOrCreateUser, stmt, getConfig } from '../../db.js';
+import { botApi } from '../../botApi.js';
 import { api } from '../../api.js';
 import { cash, sign, priceFmt, BLUE, errorEmbed } from '../../utils.js';
 import { assertGuildSetup, ValidationError } from '../../validate.js';
@@ -21,6 +22,49 @@ export default {
       throw err;
     }
 
+    // ── Linked-user path — server-authoritative positions ─────────────────────
+    const link = stmt.getLink.get(user.id);
+    if (link) {
+      try {
+        const data = await botApi('GET', `/discord/portfolio/${user.id}`);
+        const positions = data.positions ?? [];
+
+        if (!positions.length) {
+          return interaction.editReply({ embeds: [errorEmbed('You have no open positions on Polymart. Use `/buy` to start trading.')] });
+        }
+
+        const fields = positions.map(p => {
+          const sym    = p.symbol ?? p.ticker ?? '?';
+          const type   = p.assetType ?? 'stock';
+          const shares = p.shares ?? p.quantity ?? 0;
+          const avg    = p.avgCost ?? 0;
+          const value  = p.value ?? shares * (p.currentPrice ?? avg);
+          const pnl    = p.pnl ?? (value - shares * avg);
+          const pnlPct = p.pnlPct ?? (avg > 0 ? ((p.currentPrice ?? avg) - avg) / avg * 100 : 0);
+          return {
+            name:   `${sym} (${type})`,
+            value:  `${shares.toLocaleString()} shares @ avg ${cash(avg)}\nValue: ${cash(value)} • P&L: ${cash(pnl)} (${sign(pnlPct)})`,
+            inline: false,
+          };
+        });
+
+        const embed = new EmbedBuilder()
+          .setTitle(`${user.username}'s Portfolio`)
+          .setColor(BLUE)
+          .addFields(fields)
+          .setFooter({ text: '🔗 Synced from polymart.co' });
+
+        return interaction.editReply({ embeds: [embed] });
+      } catch (err) {
+        if (err.message.includes('404') || err.message.includes('No Polymart account')) {
+          stmt.deleteLink.run(user.id); // stale link — fall through to local SQLite
+        } else {
+          return interaction.editReply({ embeds: [errorEmbed(`Polymart: ${err.message}`)] });
+        }
+      }
+    }
+
+    // ── Local SQLite path ─────────────────────────────────────────────────────
     getOrCreateUser(guildId, user.id, config.starting_balance);
     const holdings = stmt.getAllHoldings.all(guildId, user.id);
 
