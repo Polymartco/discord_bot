@@ -1,145 +1,158 @@
 import { EmbedBuilder } from 'discord.js';
 import { stmt } from './db.js';
-import { api, ApiError } from './api.js';
+import { api } from './api.js';
+import { botApi } from './botApi.js';
 import { colorOf, cash } from './utils.js';
 
-// Track consecutive API failures to avoid spamming logs and burning rate budget
-const failState = {
-  consecutiveErrors: 0,
-  lastErrorAt:       0,
-  backoffUntil:      0,
-};
+// ── Back-off state ────────────────────────────────────────────────────────────
+const failState = { consecutiveErrors: 0, backoffUntil: 0 };
 
-// Track channels that have failed repeatedly — skip them without retrying every cycle
-const badChannels = new Map(); // channelId → { failCount, muteUntil }
-const CHANNEL_MUTE_AFTER   = 3;      // mute after this many consecutive fails
-const CHANNEL_MUTE_MS      = 3_600_000; // 1 hour
+// ── Channel mute tracking for local alerts ────────────────────────────────────
+const badChannels        = new Map(); // channelId → { failCount, muteUntil }
+const CHANNEL_MUTE_AFTER = 3;
+const CHANNEL_MUTE_MS    = 3_600_000; // 1 hour
 
 export function startAlertPoller(client) {
   setInterval(() => runAlertCheck(client).catch(err => {
-    console.error('[AlertPoller] Unhandled error in runAlertCheck:', err);
+    console.error('[AlertPoller] Unhandled error:', err);
   }), 12_000);
 }
 
 async function runAlertCheck(client) {
-  // Back off if recent API errors have been accumulating
   if (Date.now() < failState.backoffUntil) return;
 
-  const alerts = stmt.getAllAlerts.all();
-  if (!alerts.length) return;
+  // ── 1. Fetch local alerts + server alerts in parallel ─────────────────────
+  const localAlerts  = stmt.getAllAlerts.all();
+  let   serverAlerts = [];
 
-  const stockSymbols  = [...new Set(alerts.filter(a => a.asset_type === 'stock').map(a => a.ticker))];
-  const cryptoSymbols = [...new Set(alerts.filter(a => a.asset_type === 'crypto').map(a => a.ticker))];
-  const forexPairs    = [...new Set(alerts.filter(a => a.asset_type === 'forex').map(a => a.ticker))];
+  if (process.env.BOT_API_KEY) {
+    try {
+      const data = await botApi('GET', '/discord/alerts/pending');
+      serverAlerts = data.alerts ?? (Array.isArray(data) ? data : []);
+    } catch (err) {
+      // Non-fatal — local alerts still run
+      console.warn('[AlertPoller] Could not fetch server alerts:', err.message);
+    }
+  }
+
+  if (!localAlerts.length && !serverAlerts.length) return;
+
+  // ── 2. Batch-fetch prices for all tickers across both sets ────────────────
+  const combined = [
+    ...localAlerts.map(a => ({ ticker: a.ticker,                       assetType: a.asset_type })),
+    ...serverAlerts.map(a => ({ ticker: a.symbol ?? a.ticker ?? '',    assetType: a.assetType ?? a.asset_type ?? 'stock' })),
+  ];
+
+  const stockTickers  = [...new Set(combined.filter(a => a.assetType === 'stock') .map(a => a.ticker))];
+  const cryptoTickers = [...new Set(combined.filter(a => a.assetType === 'crypto').map(a => a.ticker))];
+  const forexPairs    = [...new Set(combined.filter(a => a.assetType === 'forex') .map(a => a.ticker))];
 
   const prices = {};
 
-  // Batch-fetch prices per asset class (one call covers all symbols of that type)
-  if (stockSymbols.length) {
+  if (stockTickers.length) {
     try {
       const all = await api.stocks();
-      for (const t of stockSymbols) {
-        if (all[t]?.price != null && Number.isFinite(all[t].price)) {
-          prices[t] = all[t].price;
-        }
-      }
+      for (const t of stockTickers) if (all[t]?.price != null && Number.isFinite(all[t].price)) prices[t] = all[t].price;
       onApiSuccess();
-    } catch (err) {
-      onApiError('stocks', err);
-    }
+    } catch (err) { onApiError('stocks', err); }
   }
-
-  if (cryptoSymbols.length) {
+  if (cryptoTickers.length) {
     try {
       const all = await api.cryptoCoins();
-      for (const s of cryptoSymbols) {
-        if (all[s]?.price != null && Number.isFinite(all[s].price)) {
-          prices[s] = all[s].price;
-        }
-      }
+      for (const s of cryptoTickers) if (all[s]?.price != null && Number.isFinite(all[s].price)) prices[s] = all[s].price;
       onApiSuccess();
-    } catch (err) {
-      onApiError('cryptoCoins', err);
-    }
+    } catch (err) { onApiError('crypto', err); }
   }
-
   if (forexPairs.length) {
     try {
       const all = await api.forexPairs();
-      for (const p of forexPairs) {
-        if (all[p]?.price != null && Number.isFinite(all[p].price)) {
-          prices[p] = all[p].price;
-        }
-      }
+      for (const p of forexPairs) if (all[p]?.price != null && Number.isFinite(all[p].price)) prices[p] = all[p].price;
       onApiSuccess();
-    } catch (err) {
-      onApiError('forexPairs', err);
-    }
+    } catch (err) { onApiError('forex', err); }
   }
 
-  // Evaluate each alert
-  for (const alert of alerts) {
-    const price = prices[alert.ticker];
-    if (price == null) continue;  // price fetch failed for this ticker — skip
+  // ── 3. Server alerts — fire as Discord DMs ────────────────────────────────
+  for (const alert of serverAlerts) {
+    const ticker = alert.symbol ?? alert.ticker ?? '';
+    const price  = prices[ticker];
+    if (price == null) continue;
 
-    // Validate trigger condition
     const triggered =
       alert.direction === 'above' ? price >= alert.threshold :
       alert.direction === 'below' ? price <= alert.threshold : false;
 
     if (!triggered) continue;
 
-    // Check if this channel is currently muted due to repeated send failures
+    // Mark triggered on the server (fire-and-forget)
+    botApi('POST', `/discord/alerts/${alert.id}/trigger`).catch(err =>
+      console.warn(`[AlertPoller] Could not mark server alert #${alert.id} as triggered:`, err.message)
+    );
+
+    const discordId = alert.discordId ?? alert.discord_id;
+    if (!discordId) continue;
+
+    try {
+      const dmUser = await client.users.fetch(discordId);
+      await dmUser.send({ embeds: [buildAlertEmbed(ticker, alert.direction, alert.threshold, price, alert.note)] });
+    } catch (err) {
+      console.warn(`[AlertPoller] Could not DM ${discordId} for server alert #${alert.id}:`, err.message);
+    }
+  }
+
+  // ── 4. Local alerts — fire in guild channel ───────────────────────────────
+  for (const alert of localAlerts) {
+    const price = prices[alert.ticker];
+    if (price == null) continue;
+
+    const triggered =
+      alert.direction === 'above' ? price >= alert.threshold :
+      alert.direction === 'below' ? price <= alert.threshold : false;
+
+    if (!triggered) continue;
+
     const ch = badChannels.get(alert.channel_id);
     if (ch && Date.now() < ch.muteUntil) {
       console.warn(`[AlertPoller] Skipping muted channel ${alert.channel_id} (alert #${alert.id})`);
-      // Delete the alert anyway — it would have fired
       stmt.deleteAlertById.run(alert.id);
       continue;
     }
 
-    // Attempt to deliver the alert
     try {
       const channel = await client.channels.fetch(alert.channel_id);
       if (!channel?.isTextBased()) throw new Error('Not a text channel');
-
-      const embed = new EmbedBuilder()
-        .setTitle('🔔 Price Alert Triggered')
-        .setColor(colorOf(alert.direction === 'above' ? 1 : -1))
-        .addFields(
-          { name: 'Asset',     value: alert.ticker,                                   inline: true },
-          { name: 'Condition', value: `${alert.direction} ${cash(alert.threshold)}`,  inline: true },
-          { name: 'Now',       value: cash(price),                                    inline: true },
-        )
-        .setTimestamp();
-
-      await channel.send({ content: `<@${alert.user_id}>`, embeds: [embed] });
-
-      // Reset bad-channel state on success
+      await channel.send({ content: `<@${alert.user_id}>`, embeds: [buildAlertEmbed(alert.ticker, alert.direction, alert.threshold, price)] });
       badChannels.delete(alert.channel_id);
     } catch (err) {
-      console.error(`[AlertPoller] Failed to send alert #${alert.id} to channel ${alert.channel_id}:`, err.message);
+      console.error(`[AlertPoller] Failed to send local alert #${alert.id} to channel ${alert.channel_id}:`, err.message);
       trackBadChannel(alert.channel_id);
     }
 
-    // Always delete the alert after it fires (one-shot), regardless of delivery outcome.
-    // We don't want alerts looping forever because a channel is broken.
     stmt.deleteAlertById.run(alert.id);
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Shared helpers ────────────────────────────────────────────────────────────
 
-function onApiSuccess() {
-  failState.consecutiveErrors = 0;
+function buildAlertEmbed(ticker, direction, threshold, currentPrice, note) {
+  const fields = [
+    { name: 'Asset',     value: ticker,                            inline: true },
+    { name: 'Condition', value: `${direction} ${cash(threshold)}`, inline: true },
+    { name: 'Now',       value: cash(currentPrice),                inline: true },
+  ];
+  if (note) fields.push({ name: 'Note', value: note, inline: false });
+
+  return new EmbedBuilder()
+    .setTitle('🔔 Price Alert Triggered')
+    .setColor(colorOf(direction === 'above' ? 1 : -1))
+    .addFields(fields)
+    .setTimestamp();
 }
+
+function onApiSuccess() { failState.consecutiveErrors = 0; }
 
 function onApiError(endpoint, err) {
   failState.consecutiveErrors++;
-  failState.lastErrorAt = Date.now();
-  console.error(`[AlertPoller] API error on ${endpoint} (error #${failState.consecutiveErrors}):`, err.message);
-
-  // Exponential back-off: 30 s, 60 s, 120 s, 240 s, max 300 s
+  console.error(`[AlertPoller] API error on ${endpoint} (#${failState.consecutiveErrors}):`, err.message);
   if (failState.consecutiveErrors >= 3) {
     const backoffSec = Math.min(300, 30 * 2 ** (failState.consecutiveErrors - 3));
     failState.backoffUntil = Date.now() + backoffSec * 1000;
