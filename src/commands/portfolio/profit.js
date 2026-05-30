@@ -1,0 +1,105 @@
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { getOrCreateUser, stmt, getConfig } from '../../db.js';
+import { api } from '../../api.js';
+import { cash, colorOf, GOLD, errorEmbed } from '../../utils.js';
+import { assertGuildSetup, ValidationError } from '../../validate.js';
+
+export default {
+  data: new SlashCommandBuilder()
+    .setName('profit')
+    .setDescription('Summary P&L — unrealised, realised, total'),
+
+  async execute(interaction) {
+    await interaction.deferReply({ ephemeral: true });
+    const { guildId, user } = interaction;
+    const config = getConfig(guildId);
+
+    try {
+      assertGuildSetup(config);
+    } catch (err) {
+      if (err instanceof ValidationError) return interaction.editReply({ embeds: [errorEmbed(err.message)] });
+      throw err;
+    }
+
+    getOrCreateUser(guildId, user.id, config.starting_balance);
+
+    // ── Realised P&L via running-average FIFO ─────────────────────────────────
+    // Process trades chronologically to compute the avg cost basis at the time of
+    // each sell. This prevents open positions from distorting the realised number.
+    const allTrades = stmt.getAllTradesOrdered.all(guildId, user.id);
+
+    let realisedPnl = 0;
+    let totalFees   = 0;
+    let wins = 0, losses = 0;
+    const runningAvg    = {}; // ticker → weighted avg cost at this point in history
+    const runningShares = {}; // ticker → shares held per trade history
+
+    for (const t of allTrades) {
+      totalFees += t.fee;
+
+      if (t.side === 'buy') {
+        const oldShares = runningShares[t.ticker] ?? 0;
+        const oldAvg    = runningAvg[t.ticker]    ?? 0;
+        const newShares = oldShares + t.shares;
+        runningAvg[t.ticker]    = newShares > 0 ? (oldShares * oldAvg + t.total) / newShares : 0;
+        runningShares[t.ticker] = newShares;
+      } else if (t.side === 'sell') {
+        const avgCost  = runningAvg[t.ticker] ?? 0;
+        const tradePnl = (t.price - avgCost) * t.shares;
+        realisedPnl   += tradePnl;
+        runningShares[t.ticker] = Math.max(0, (runningShares[t.ticker] ?? 0) - t.shares);
+        if (tradePnl >= 0) wins++; else losses++;
+      }
+    }
+
+    // ── Unrealised P&L — live prices for open holdings ────────────────────────
+    const holdings = stmt.getAllHoldings.all(guildId, user.id);
+    let portfolioValue = 0;
+    let staleCount     = 0;
+
+    const priceResults = await Promise.allSettled(
+      holdings.map(h => {
+        if (h.asset_type === 'forex')  return api.forexPair(h.ticker).then(p => p.price);
+        if (h.asset_type === 'crypto') return api.cryptoCoin(h.ticker).then(c => c.price);
+        return api.stock(h.ticker).then(s => s.price);
+      })
+    );
+
+    holdings.forEach((h, i) => {
+      if (priceResults[i].status === 'fulfilled') {
+        const p = priceResults[i].value;
+        if (typeof p === 'number' && Number.isFinite(p) && p > 0) {
+          portfolioValue += h.shares * p;
+          return;
+        }
+      }
+      portfolioValue += h.shares * h.avg_cost;
+      staleCount++;
+    });
+
+    const invested   = holdings.reduce((sum, h) => sum + h.shares * h.avg_cost, 0);
+    const unrealised = portfolioValue - invested;
+    const totalPnl   = realisedPnl + unrealised;
+
+    const totalSells = wins + losses;
+    const winRate    = totalSells > 0 ? `${((wins / totalSells) * 100).toFixed(1)}%` : '—';
+
+    const embed = new EmbedBuilder()
+      .setTitle(`${user.username}'s P&L Summary`)
+      .setColor(colorOf(totalPnl))
+      .addFields(
+        { name: 'Realised P&L',   value: cash(realisedPnl),   inline: true },
+        { name: 'Unrealised P&L', value: cash(unrealised),    inline: true },
+        { name: 'Total P&L',      value: cash(totalPnl),      inline: true },
+        { name: 'Total Fees',     value: cash(totalFees),      inline: true },
+        { name: 'Win Rate',       value: winRate,              inline: true },
+        { name: 'Closed Trades',  value: String(totalSells),   inline: true },
+      );
+
+    if (staleCount > 0) {
+      embed.setFooter({ text: `⚠️ ${staleCount} position(s) using cost basis — live price unavailable` });
+    }
+
+    await interaction.editReply({ embeds: [embed] });
+  },
+};
