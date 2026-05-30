@@ -30,12 +30,16 @@ echo -e "${RESET}"
 # times and blocks any manual apt commands. Stop and disable it up front.
 header "Preparing apt"
 
-info "Stopping unattended-upgrades..."
-sudo systemctl stop unattended-upgrades 2>/dev/null || true
+info "Killing unattended-upgrades..."
 sudo systemctl disable unattended-upgrades 2>/dev/null || true
-sudo pkill -f unattended-upgr 2>/dev/null || true
+sudo systemctl kill --signal=SIGKILL unattended-upgrades 2>/dev/null || true
+sudo kill -9 $(sudo pgrep -f unattended-upgr 2>/dev/null) 2>/dev/null || true
 
-# Wait until every dpkg/apt process has actually released its locks
+# Fix any dpkg state left behind by the killed process
+info "Fixing dpkg state..."
+sudo dpkg --configure -a 2>/dev/null || true
+
+# Wait until locks are fully released
 info "Waiting for dpkg locks to clear..."
 while sudo lsof /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 1; done
 while sudo lsof /var/lib/dpkg/lock           >/dev/null 2>&1; do sleep 1; done
@@ -112,10 +116,19 @@ success ".env looks good"
 # ── 4. npm install ────────────────────────────────────────────────────────────
 header "Installing npm dependencies"
 info "Removing any node_modules from a different platform..."
-rm -rf node_modules
-info "Installing dependencies..."
-npm install --no-fund --no-audit --omit=optional
-success "npm install complete"
+rm -rf node_modules package-lock.json
+
+info "Installing JS dependencies..."
+npm install --no-fund --no-audit --omit=optional --ignore-scripts
+success "JS packages installed"
+
+# better-sqlite3 has no prebuilt binary for Node 20 on Linux, so we must compile
+# from source. This takes 3-8 minutes on a small VM — it is not hung, just slow.
+echo ""
+warn "Compiling better-sqlite3 from source — takes 3-8 min on small VMs. Do NOT interrupt."
+echo ""
+npm_config_build_from_source=true npm rebuild better-sqlite3
+success "better-sqlite3 compiled"
 
 # ── 5. Logs directory ─────────────────────────────────────────────────────────
 mkdir -p logs

@@ -7,7 +7,7 @@
     "deploy": "node src/deploy.js"
   },
   "dependencies": {
-    "better-sqlite3": "^12.10.0",
+    "better-sqlite3": "9.6.0",
     "discord.js":     "^14.15.0",
     "dotenv":         "^16.4.5"
   },
