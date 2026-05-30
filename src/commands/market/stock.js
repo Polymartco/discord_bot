@@ -54,7 +54,6 @@ export default {
     const embed = new EmbedBuilder()
       .setTitle(label)
       .setColor(colorOf(change))
-      .setImage('attachment://chart.png')
       .addFields(
         { name: 'Price',     value: `$${price.toFixed(2)}`, inline: true },
         { name: 'Change',    value: sign(change),           inline: true },
@@ -71,6 +70,7 @@ export default {
       )
       .setFooter({ text: `VWAP $${vwap} • Beta ${beta} • ATR ${atr}` });
 
-    await interaction.editReply({ embeds: [embed], files: [att] });
+    if (att) embed.setImage('attachment://chart.png');
+    await interaction.editReply({ embeds: [embed], ...(att ? { files: [att] } : {}) });
   },
 };

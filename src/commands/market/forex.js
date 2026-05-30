@@ -38,7 +38,6 @@ export default {
     const embed = new EmbedBuilder()
       .setTitle(`💱 ${pair}`)
       .setColor(colorOf(changePct))
-      .setImage('attachment://chart.png')
       .addFields(
         { name: 'Price',         value: priceFmt(price, 5),                                              inline: true },
         { name: 'Change',        value: sign(changePct),                                                 inline: true },
@@ -51,6 +50,7 @@ export default {
         { name: 'S1',            value: p.pivotS1       != null ? p.pivotS1.toFixed(5) : '—',          inline: true },
       );
 
-    await interaction.editReply({ embeds: [embed], files: [att] });
+    if (att) embed.setImage('attachment://chart.png');
+    await interaction.editReply({ embeds: [embed], ...(att ? { files: [att] } : {}) });
   },
 };

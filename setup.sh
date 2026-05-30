@@ -95,10 +95,10 @@ success ".env looks good"
 
 # ── 4. npm install ────────────────────────────────────────────────────────────
 header "Installing npm dependencies"
-info "This may take a minute on first run (native modules compile from source)..."
-npm install --no-fund --no-audit
-info "Rebuilding native modules for this platform..."
-npm rebuild better-sqlite3
+info "Removing any node_modules from a different platform..."
+rm -rf node_modules
+info "Installing dependencies..."
+npm install --no-fund --no-audit --omit=optional
 success "npm install complete"
 
 # ── 5. Logs directory ─────────────────────────────────────────────────────────

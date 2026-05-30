@@ -1,5 +1,4 @@
 import { EmbedBuilder, AttachmentBuilder } from 'discord.js';
-import { drawPriceChart } from './chart.js';
 
 export const GREEN = 0x22c55e;
 export const RED   = 0xef4444;
@@ -11,9 +10,25 @@ export const cash     = n => `$${n.toLocaleString('en-US', { minimumFractionDigi
 export const priceFmt = (n, decimals = 4) => n < 1 ? n.toFixed(5) : n < 100 ? n.toFixed(decimals) : n.toFixed(2);
 export const colorOf  = n => n >= 0 ? GREEN : RED;
 
+// canvas is optional — charts are skipped gracefully when not installed
+let drawPriceChart = null;
+try {
+  const mod = await import('./chart.js');
+  drawPriceChart = mod.drawPriceChart;
+} catch {}
+
+/**
+ * Returns an AttachmentBuilder for the price chart PNG, or null if canvas
+ * is not installed. Callers must check for null before using.
+ */
 export function chartAttachment(history, label, currentPrice, changePct) {
-  const buf = drawPriceChart({ history, label, currentPrice, changePct });
-  return new AttachmentBuilder(buf, { name: 'chart.png' });
+  if (!drawPriceChart) return null;
+  try {
+    const buf = drawPriceChart({ history, label, currentPrice, changePct });
+    return new AttachmentBuilder(buf, { name: 'chart.png' });
+  } catch {
+    return null;
+  }
 }
 
 export function errorEmbed(message) {
