@@ -3,13 +3,12 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start":  "node src/index.js",
-    "deploy": "node src/deploy.js"
+    "start":  "bun src/index.js",
+    "deploy": "bun src/deploy.js"
   },
   "dependencies": {
-    "better-sqlite3": "9.6.0",
-    "discord.js":     "^14.15.0",
-    "dotenv":         "^16.4.5"
+    "discord.js": "^14.15.0",
+    "dotenv":     "^16.4.5"
   },
   "optionalDependencies": {
     "@napi-rs/canvas": "^0.1.68"

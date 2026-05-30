@@ -2,7 +2,7 @@ module.exports = {
   apps: [{
     name:          'polymart-bot',
     script:        'src/index.js',
-    interpreter:   'node',
+    interpreter:   `${process.env.HOME}/.bun/bin/bun`,
     watch:         false,
     autorestart:   true,
     max_restarts:  15,
@@ -12,8 +12,5 @@ module.exports = {
     error_file:  'logs/error.log',
     out_file:    'logs/out.log',
     merge_logs:  true,
-    env: {
-      NODE_ENV: 'production',
-    },
   }],
 };

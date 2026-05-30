@@ -1,16 +1,17 @@
-import Database from 'better-sqlite3';
+import { Database } from 'bun:sqlite';
 import { mkdirSync } from 'fs';
 
 mkdirSync('./data', { recursive: true });
 
 const db = new Database('./data/polymart.db');
 
-db.pragma('journal_mode = WAL');
-db.pragma('synchronous = NORMAL');
-db.pragma('cache_size = -32000');
-db.pragma('temp_store = MEMORY');
-db.pragma('mmap_size = 268435456');
-db.pragma('foreign_keys = ON');
+// bun:sqlite uses db.exec() for pragmas instead of db.pragma()
+db.exec('PRAGMA journal_mode = WAL');
+db.exec('PRAGMA synchronous = NORMAL');
+db.exec('PRAGMA cache_size = -32000');
+db.exec('PRAGMA temp_store = MEMORY');
+db.exec('PRAGMA mmap_size = 268435456');
+db.exec('PRAGMA foreign_keys = ON');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS guild_config (
@@ -96,8 +97,8 @@ export const stmt = {
       setup_by         = excluded.setup_by
   `),
 
-  getUser: db.prepare('SELECT * FROM users WHERE guild_id = ? AND user_id = ?'),
-  upsertUser: db.prepare(`
+  getUser:       db.prepare('SELECT * FROM users WHERE guild_id = ? AND user_id = ?'),
+  upsertUser:    db.prepare(`
     INSERT INTO users (guild_id, user_id, balance)
     VALUES (?, ?, ?)
     ON CONFLICT(guild_id, user_id) DO NOTHING
@@ -106,9 +107,9 @@ export const stmt = {
   setLastDaily:  db.prepare('UPDATE users SET last_daily = ? WHERE guild_id = ? AND user_id = ?'),
   adjustBalance: db.prepare('UPDATE users SET balance = MAX(0, balance + ?) WHERE guild_id = ? AND user_id = ?'),
 
-  getHolding: db.prepare('SELECT * FROM holdings WHERE guild_id = ? AND user_id = ? AND ticker = ?'),
-  getAllHoldings: db.prepare('SELECT * FROM holdings WHERE guild_id = ? AND user_id = ? AND shares > 0'),
-  upsertHolding: db.prepare(`
+  getHolding:           db.prepare('SELECT * FROM holdings WHERE guild_id = ? AND user_id = ? AND ticker = ?'),
+  getAllHoldings:        db.prepare('SELECT * FROM holdings WHERE guild_id = ? AND user_id = ? AND shares > 0'),
+  upsertHolding:        db.prepare(`
     INSERT INTO holdings (guild_id, user_id, ticker, asset_type, shares, avg_cost)
     VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(guild_id, user_id, ticker) DO UPDATE SET
@@ -125,7 +126,6 @@ export const stmt = {
     SELECT * FROM trades WHERE guild_id = ? AND user_id = ?
     ORDER BY created_at DESC LIMIT ? OFFSET ?
   `),
-  // Ordered full history used for correct running-average P&L — capped at 50k rows
   getAllTradesOrdered: db.prepare(`
     SELECT * FROM trades WHERE guild_id = ? AND user_id = ?
     ORDER BY created_at ASC LIMIT 50000
@@ -138,7 +138,7 @@ export const stmt = {
 
   getAlerts:       db.prepare('SELECT * FROM price_alerts WHERE guild_id = ? AND user_id = ?'),
   countAlerts:     db.prepare('SELECT COUNT(*) as cnt FROM price_alerts WHERE guild_id = ? AND user_id = ?'),
-  getAllAlerts:    db.prepare('SELECT * FROM price_alerts'),
+  getAllAlerts:     db.prepare('SELECT * FROM price_alerts'),
   insertAlert:     db.prepare('INSERT INTO price_alerts (guild_id, channel_id, user_id, ticker, asset_type, direction, threshold) VALUES (?, ?, ?, ?, ?, ?, ?)'),
   deleteAlert:     db.prepare('DELETE FROM price_alerts WHERE id = ? AND user_id = ?'),
   deleteAlertById: db.prepare('DELETE FROM price_alerts WHERE id = ?'),

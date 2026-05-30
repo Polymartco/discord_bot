@@ -12,31 +12,25 @@ die()  { echo -e "\n[FAIL] $*" >&2; exit 1; }
 
 echo -e "\n${BOLD}── Polymart Bot Setup ──${RESET}\n"
 
-# ── 1. Kill anything holding the apt lock ─────────────────────────────────────
+# ── 1. Kill apt lock and install build tools ──────────────────────────────────
 info "Clearing apt locks..."
 sudo pkill -9 -f "unattended-upgr|apt-get|dpkg" 2>/dev/null || true
 sleep 2
 sudo dpkg --configure -a 2>/dev/null || true
-ok "apt is free"
 
-# ── 2. Build tools ────────────────────────────────────────────────────────────
 info "Installing build tools..."
 sudo apt-get update -qq
-sudo apt-get install -y build-essential python3 curl ca-certificates
-ok "Build tools ready"
+sudo apt-get install -y curl ca-certificates unzip
+ok "System packages ready"
 
-# ── 3. Node.js ────────────────────────────────────────────────────────────────
-NODE_MAJOR=0
-command -v node &>/dev/null && NODE_MAJOR=$(node -e "process.stdout.write(String(process.version.split('.')[0].slice(1)))")
+# ── 2. Bun ────────────────────────────────────────────────────────────────────
+info "Installing Bun..."
+curl -fsSL https://bun.sh/install | bash
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+ok "Bun $(bun --version)"
 
-if [[ $NODE_MAJOR -lt 20 ]]; then
-  info "Installing Node.js 20 LTS..."
-  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-  sudo apt-get install -y nodejs
-fi
-ok "Node $(node -v)"
-
-# ── 4. .env ───────────────────────────────────────────────────────────────────
+# ── 3. .env ───────────────────────────────────────────────────────────────────
 if [[ ! -f .env ]]; then
   [[ -f .env.example ]] && cp .env.example .env || printf "DISCORD_TOKEN=\nCLIENT_ID=\n" > .env
   die ".env was missing — fill in DISCORD_TOKEN and CLIENT_ID then re-run."
@@ -45,28 +39,27 @@ grep -qE "^DISCORD_TOKEN=.+" .env || die "DISCORD_TOKEN is empty in .env"
 grep -qE "^CLIENT_ID=.+"    .env || die "CLIENT_ID is empty in .env"
 ok ".env looks good"
 
-# ── 5. npm install ────────────────────────────────────────────────────────────
-# .npmrc sets build_from_source=true — skips GitHub binary downloads entirely
-# and compiles native modules locally. Slower first time, but never hangs.
-info "Installing dependencies (compiling native modules — takes ~5 min, do not interrupt)..."
-rm -rf node_modules package-lock.json
-npm install --omit=optional --no-fund
+# ── 4. Install dependencies ───────────────────────────────────────────────────
+info "Installing dependencies..."
+rm -rf node_modules bun.lockb
+bun install --no-optional
 ok "Dependencies installed"
 
-# ── 6. Register slash commands ────────────────────────────────────────────────
+# ── 5. Register slash commands ────────────────────────────────────────────────
 info "Registering slash commands with Discord..."
-node src/deploy.js
+bun src/deploy.js
 ok "Slash commands registered"
 
-# ── 7. PM2 ───────────────────────────────────────────────────────────────────
+# ── 6. PM2 ───────────────────────────────────────────────────────────────────
 info "Setting up PM2..."
-command -v pm2 &>/dev/null || sudo npm install -g pm2
+command -v pm2 &>/dev/null || npm install -g pm2
+mkdir -p logs
 pm2 delete polymart-bot 2>/dev/null || true
 pm2 start ecosystem.config.cjs
 pm2 save --force
 ok "Bot started"
 
-# ── 8. Auto-start on reboot ───────────────────────────────────────────────────
+# ── 7. Auto-start on reboot ───────────────────────────────────────────────────
 info "Configuring systemd auto-start..."
 STARTUP=$(pm2 startup systemd 2>&1 | grep -o "sudo env PATH.*" | head -1)
 if [[ -n "$STARTUP" ]]; then
