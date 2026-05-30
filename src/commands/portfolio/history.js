@@ -1,7 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getOrCreateUser, stmt, getConfig } from '../../db.js';
 import { cash, BLUE, errorEmbed } from '../../utils.js';
-import { assertGuildSetup, ValidationError } from '../../validate.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -14,13 +13,6 @@ export default {
     const { guildId, user } = interaction;
     const page   = interaction.options.getInteger('page') ?? 1;
     const config = getConfig(guildId);
-
-    try {
-      assertGuildSetup(config);
-    } catch (err) {
-      if (err instanceof ValidationError) return interaction.editReply({ embeds: [errorEmbed(err.message)] });
-      throw err;
-    }
 
     getOrCreateUser(guildId, user.id, config.starting_balance);
 

@@ -3,7 +3,6 @@ import { getOrCreateUser, stmt, getConfig } from '../../db.js';
 import { botApi } from '../../botApi.js';
 import { api, ApiError } from '../../api.js';
 import { cash, colorOf, GOLD, BLUE, errorEmbed } from '../../utils.js';
-import { assertGuildSetup, ValidationError } from '../../validate.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -14,13 +13,6 @@ export default {
     await interaction.deferReply({ ephemeral: true });
     const { guildId, user } = interaction;
     const config = getConfig(guildId);
-
-    try {
-      assertGuildSetup(config);
-    } catch (err) {
-      if (err instanceof ValidationError) return interaction.editReply({ embeds: [errorEmbed(err.message)] });
-      throw err;
-    }
 
     // ── Linked-user path — server cash + positions ────────────────────────────
     const link = stmt.getLink.get(user.id);

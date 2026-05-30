@@ -8,7 +8,6 @@ import {
   validateTickerFormat,
   validateShareAmount,
   parseSharesOrAll,
-  assertGuildSetup,
   assertSufficientHolding,
   assertValidPrice,
   assertCommandCooldown,
@@ -41,7 +40,6 @@ export default {
       assertCommandCooldown(user.id, 'trade', 1500);
       ticker    = validateTickerFormat(interaction.options.getString('ticker'));
       assetType = interaction.options.getString('type') ?? detectAssetType(ticker);
-      assertGuildSetup(config);
     } catch (err) {
       if (err instanceof ValidationError) return interaction.editReply({ embeds: [errorEmbed(err.message)] });
       throw err;

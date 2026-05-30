@@ -1,8 +1,6 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { getOrCreateUser, getConfig, stmt } from '../../db.js';
 import { cash, successEmbed, errorEmbed } from '../../utils.js';
-import { assertGuildSetup, ValidationError } from '../../validate.js';
-
 export default {
   data: new SlashCommandBuilder()
     .setName('daily')
@@ -11,14 +9,6 @@ export default {
   async execute(interaction) {
     const { guildId, user } = interaction;
     const config   = getConfig(guildId);
-
-    try {
-      assertGuildSetup(config);
-    } catch (err) {
-      if (err instanceof ValidationError) return interaction.reply({ embeds: [errorEmbed(err.message)], ephemeral: true });
-      throw err;
-    }
-
     const dbUser   = getOrCreateUser(guildId, user.id, config.starting_balance);
     const now      = Math.floor(Date.now() / 1000);
     const elapsed  = now - dbUser.last_daily;

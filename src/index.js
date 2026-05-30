@@ -15,6 +15,9 @@ if (!process.env.CLIENT_ID) {
   console.error('[Startup] CLIENT_ID is not set in .env — cannot deploy commands.');
   // Not fatal for running the bot, but warn loudly
 }
+if (!process.env.BOT_API_KEY) {
+  console.warn('[Startup] BOT_API_KEY is not set in .env — /link, /buy, /sell, /portfolio will fall back to local storage for all users.');
+}
 
 // ── Global error safety net ───────────────────────────────────────────────────
 // Prevents single async failures from crashing the entire process.
