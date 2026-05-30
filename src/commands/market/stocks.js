@@ -1,6 +1,6 @@
-import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } from 'discord.js';
 import { api, ApiError } from '../../api.js';
-import { sign, BLUE, errorEmbed } from '../../utils.js';
+import { sign, BLUE, errorEmbed, sectorHeatmapBuffer } from '../../utils.js';
 
 const PAGE_SIZE = 15;
 
@@ -20,11 +20,11 @@ export default {
     .addStringOption(o =>
       o.setName('sort').setDescription('Sort by (default: change)')
         .addChoices(
-          { name: 'Change %',  value: 'change'  },
-          { name: 'Price',     value: 'price'   },
-          { name: 'Volume',    value: 'volume'  },
-          { name: 'RSI',       value: 'rsi'     },
-          { name: 'Alphabetical', value: 'alpha' },
+          { name: 'Change %',     value: 'change'  },
+          { name: 'Price',        value: 'price'   },
+          { name: 'Volume',       value: 'volume'  },
+          { name: 'RSI',          value: 'rsi'     },
+          { name: 'Alphabetical', value: 'alpha'   },
         )
     ),
 
@@ -41,7 +41,6 @@ export default {
       throw err;
     }
 
-    // getStocks returns { "APEX": { price, change, ... } } — ticker is the map key
     const list = Object.entries(data)
       .filter(([, v]) => v && typeof v === 'object')
       .map(([ticker, s]) => ({ ticker, ...s }));
@@ -57,6 +56,10 @@ export default {
     };
     list.sort(sorters[sortBy] ?? sorters.change);
 
+    // Generate heatmap chart once; included on every page for context
+    const heatmapBuf = sector ? null : sectorHeatmapBuffer(data);
+    const makeFiles  = () => heatmapBuf ? [new AttachmentBuilder(heatmapBuf, { name: 'heatmap.png' })] : [];
+
     const totalPages = Math.ceil(list.length / PAGE_SIZE);
     let page = 0;
 
@@ -71,11 +74,14 @@ export default {
         return `\`${num}\` **${s.ticker}** — ${price} ${change}`;
       });
 
-      return new EmbedBuilder()
-        .setTitle(sector ? `${sector.toUpperCase()} Sector Stocks` : 'All Stocks')
+      const embed = new EmbedBuilder()
+        .setTitle(sector ? `${sector.toUpperCase()} Sector` : 'All Stocks')
         .setColor(BLUE)
         .setDescription(lines.join('\n'))
         .setFooter({ text: `Page ${p + 1}/${totalPages} • ${list.length} stocks • sorted by ${sortBy}` });
+
+      if (heatmapBuf) embed.setImage('attachment://heatmap.png');
+      return embed;
     };
 
     const buildRow = (p) => new ActionRowBuilder().addComponents(
@@ -99,17 +105,18 @@ export default {
     const msg = await interaction.editReply({
       embeds:     [buildEmbed(page)],
       components: [buildRow(page)],
+      files:      makeFiles(),
     });
 
     const collector = msg.createMessageComponentCollector({
       filter: i => i.user.id === interaction.user.id,
-      time:   120_000, // 2 minutes
+      time:   120_000,
     });
 
     collector.on('collect', async i => {
       if (i.customId === 'stocks_next') page = Math.min(page + 1, totalPages - 1);
       if (i.customId === 'stocks_prev') page = Math.max(page - 1, 0);
-      await i.update({ embeds: [buildEmbed(page)], components: [buildRow(page)] });
+      await i.update({ embeds: [buildEmbed(page)], components: [buildRow(page)], files: makeFiles() });
     });
 
     collector.on('end', () => {
@@ -118,7 +125,7 @@ export default {
         new ButtonBuilder().setCustomId('stocks_page').setLabel(`${page + 1} / ${totalPages}`).setStyle(ButtonStyle.Primary).setDisabled(true),
         new ButtonBuilder().setCustomId('stocks_next').setLabel('Next  ▶').setStyle(ButtonStyle.Secondary).setDisabled(true),
       );
-      interaction.editReply({ components: [disabledRow] }).catch(() => {});
+      interaction.editReply({ components: [disabledRow], files: makeFiles() }).catch(() => {});
     });
   },
 };

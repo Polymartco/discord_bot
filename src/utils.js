@@ -1,8 +1,9 @@
 import { EmbedBuilder, AttachmentBuilder } from 'discord.js';
 
-export const GREEN = 0x22c55e;
-export const RED   = 0xef4444;
-export const BLUE  = 0x6366f1;
+// Embed accent colors — match chart palette
+export const GREEN = 0x2ecc71;
+export const RED   = 0xe74c3c;
+export const BLUE  = 0x5865f2;
 export const GOLD  = 0xf59e0b;
 
 export const sign     = n => `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
@@ -10,27 +11,60 @@ export const cash     = n => `$${n.toLocaleString('en-US', { minimumFractionDigi
 export const priceFmt = (n, decimals = 4) => n < 1 ? n.toFixed(5) : n < 100 ? n.toFixed(decimals) : n.toFixed(2);
 export const colorOf  = n => n >= 0 ? GREEN : RED;
 
-// canvas is optional — charts are skipped gracefully when not installed
-let drawPriceChart = null;
+// canvas is optional — all chart helpers return null when not installed
+let _drawPriceChart    = null;
+let _drawMarketOverview = null;
+let _drawSectorHeatmap  = null;
+let _drawCompareChart   = null;
 try {
   const mod = await import('./chart.js');
-  drawPriceChart = mod.drawPriceChart;
+  _drawPriceChart     = mod.drawPriceChart;
+  _drawMarketOverview = mod.drawMarketOverview;
+  _drawSectorHeatmap  = mod.drawSectorHeatmap;
+  _drawCompareChart   = mod.drawCompareChart;
 } catch {}
 
-/**
- * Returns an AttachmentBuilder for the price chart PNG, or null if canvas
- * is not installed. Callers must check for null before using.
- */
+// ── Single price chart ────────────────────────────────────────────────────────
 export function chartAttachment(history, label, currentPrice, changePct) {
-  if (!drawPriceChart) return null;
+  if (!_drawPriceChart) return null;
   try {
-    const buf = drawPriceChart({ history, label, currentPrice, changePct });
+    const buf = _drawPriceChart({ history, label, currentPrice, changePct });
     return new AttachmentBuilder(buf, { name: 'chart.png' });
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
+// ── Market overview (multi-line) ──────────────────────────────────────────────
+export function marketOverviewBuffer(stocks) {
+  if (!_drawMarketOverview) return null;
+  try { return _drawMarketOverview(stocks); } catch { return null; }
+}
+
+export function marketOverviewAttachment(stocks) {
+  const buf = marketOverviewBuffer(stocks);
+  return buf ? new AttachmentBuilder(buf, { name: 'overview.png' }) : null;
+}
+
+// ── Sector heatmap ────────────────────────────────────────────────────────────
+export function sectorHeatmapBuffer(stocks) {
+  if (!_drawSectorHeatmap) return null;
+  try { return _drawSectorHeatmap(stocks); } catch { return null; }
+}
+
+export function sectorHeatmapAttachment(stocks) {
+  const buf = sectorHeatmapBuffer(stocks);
+  return buf ? new AttachmentBuilder(buf, { name: 'heatmap.png' }) : null;
+}
+
+// ── Comparison chart ──────────────────────────────────────────────────────────
+export function compareChartAttachment(assets) {
+  if (!_drawCompareChart) return null;
+  try {
+    const buf = _drawCompareChart(assets);
+    return buf ? new AttachmentBuilder(buf, { name: 'compare.png' }) : null;
+  } catch { return null; }
+}
+
+// ── Embed helpers ─────────────────────────────────────────────────────────────
 export function errorEmbed(message) {
   return new EmbedBuilder().setColor(RED).setDescription(`❌ ${message}`);
 }
