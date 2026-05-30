@@ -7,10 +7,8 @@
     "deploy": "bun src/deploy.js"
   },
   "dependencies": {
-    "discord.js": "^14.15.0",
-    "dotenv":     "^16.4.5"
-  },
-  "optionalDependencies": {
-    "@napi-rs/canvas": "^0.1.68"
+    "@napi-rs/canvas": "^0.1.68",
+    "discord.js":      "^14.15.0",
+    "dotenv":          "^16.4.5"
   }
 }

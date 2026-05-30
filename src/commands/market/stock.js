@@ -20,18 +20,15 @@ export default {
       throw err;
     }
 
-    let s, hist;
+    let s;
     try {
-      [s, hist] = await Promise.all([
-        api.stock(ticker),
-        api.history(ticker, 80),
-      ]);
+      s = await api.stock(ticker);
     } catch (err) {
       if (err instanceof ApiError) return interaction.editReply({ embeds: [errorEmbed(`**${ticker}** not found. Check the ticker and try again.`)] });
       throw err;
     }
 
-    // Null-safe field access — API may return partial data
+    // history is embedded directly in the stock response — no second API call needed
     const price    = s.price    ?? 0;
     const change   = s.change   ?? 0;
     const rsi      = s.rsi      != null ? s.rsi.toFixed(1) : '—';
@@ -49,7 +46,7 @@ export default {
     const atr      = s.atr      != null ? s.atr.toFixed(2)  : '—';
     const label    = `${s.ticker ?? ticker} — ${s.name ?? ticker}`;
 
-    const att = chartAttachment(hist?.history ?? [], label, price, change);
+    const att = chartAttachment(Array.isArray(s.history) ? s.history : [], label, price, change);
 
     const embed = new EmbedBuilder()
       .setTitle(label)
