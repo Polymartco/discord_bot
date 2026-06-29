@@ -89,18 +89,15 @@ async function handleAutocomplete(interaction, client) {
 async function handleComponent(interaction) {
   const { namespace, action, ownerId, args } = parseId(interaction.customId);
 
+  // Not a router-managed component (e.g. a command's own collector buttons like
+  // blackjack/mines). Ignore it so the collector can handle it without interference.
+  const handler = componentHandlers.get(namespace);
+  if (!handler) return;
+
   // Ownership: only the user who invoked the original command may drive its controls.
   if (ownerId && ownerId !== '*' && ownerId !== interaction.user.id) {
     return interaction.reply({
       embeds:    [errorEmbed("These controls aren't yours — run the command yourself.")],
-      ephemeral: true,
-    }).catch(() => {});
-  }
-
-  const handler = componentHandlers.get(namespace);
-  if (!handler) {
-    return interaction.reply({
-      embeds:    [errorEmbed('This control has expired. Re-run the command.')],
       ephemeral: true,
     }).catch(() => {});
   }
