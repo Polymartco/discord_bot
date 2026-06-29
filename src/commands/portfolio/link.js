@@ -23,12 +23,9 @@ export default {
       return interaction.editReply({ embeds: [errorEmbed('Code must be a 6-digit number.')] });
     }
 
-    const existing = stmt.getLink.get(interaction.user.id);
-    if (existing) {
-      return interaction.editReply({
-        embeds: [errorEmbed(`Already linked to **${existing.display_name ?? 'a Polymart account'}**. Run \`/unlink\` first.`)],
-      });
-    }
+    // Clear any stale local link so re-linking always works.
+    // saveLink uses ON CONFLICT DO UPDATE, so it's safe to proceed even if a record exists.
+    stmt.deleteLink.run(interaction.user.id);
 
     let result;
     try {

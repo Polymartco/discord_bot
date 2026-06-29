@@ -89,10 +89,45 @@ db.exec(`
     linked_at       INTEGER NOT NULL DEFAULT (unixepoch())
   );
 
+  -- Unlocked achievements (per guild, per user)
+  CREATE TABLE IF NOT EXISTS achievements (
+    guild_id    TEXT    NOT NULL,
+    user_id     TEXT    NOT NULL,
+    code        TEXT    NOT NULL,
+    unlocked_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    PRIMARY KEY (guild_id, user_id, code)
+  );
+
+  -- Final standings snapshot when a season is reset
+  CREATE TABLE IF NOT EXISTS season_winners (
+    guild_id  TEXT    NOT NULL,
+    season_no INTEGER NOT NULL,
+    user_id   TEXT    NOT NULL,
+    rank      INTEGER NOT NULL,
+    balance   REAL    NOT NULL,
+    ended_at  INTEGER NOT NULL DEFAULT (unixepoch()),
+    PRIMARY KEY (guild_id, season_no, user_id)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_trades_guild_user   ON trades(guild_id, user_id);
   CREATE INDEX IF NOT EXISTS idx_holdings_guild_user ON holdings(guild_id, user_id);
   CREATE INDEX IF NOT EXISTS idx_alerts_ticker       ON price_alerts(ticker, asset_type);
 `);
+
+// ── Lightweight column migrations ─────────────────────────────────────────────
+// SQLite has no "ADD COLUMN IF NOT EXISTS", so we check PRAGMA table_info first.
+// Idempotent: safe to run on every boot.
+function addColumnIfMissing(table, column, ddl) {
+  // pragma_table_info() (table-valued form) reliably returns rows via prepare().all().
+  const cols = db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all();
+  if (!cols.some(c => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+}
+
+addColumnIfMissing('users', 'daily_streak', 'daily_streak INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('users', 'best_streak',  'best_streak INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('users', 'xp',           'xp INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('users', 'level',        'level INTEGER NOT NULL DEFAULT 1');
+addColumnIfMissing('guild_config', 'season_no', 'season_no INTEGER NOT NULL DEFAULT 1');
 
 export const stmt = {
   getConfig:    db.prepare('SELECT * FROM guild_config WHERE guild_id = ?'),
@@ -155,6 +190,21 @@ export const stmt = {
   serverLeaderboard: db.prepare(`
     SELECT user_id, balance FROM users WHERE guild_id = ? ORDER BY balance DESC LIMIT 10
   `),
+
+  // Progression (streaks / XP / level)
+  setStreak: db.prepare('UPDATE users SET daily_streak = ?, best_streak = MAX(best_streak, ?) WHERE guild_id = ? AND user_id = ?'),
+  setXp:     db.prepare('UPDATE users SET xp = ?, level = ? WHERE guild_id = ? AND user_id = ?'),
+
+  // Achievements
+  getAchievements:   db.prepare('SELECT code, unlocked_at FROM achievements WHERE guild_id = ? AND user_id = ?'),
+  insertAchievement: db.prepare('INSERT OR IGNORE INTO achievements (guild_id, user_id, code) VALUES (?, ?, ?)'),
+  countUserTrades:   db.prepare('SELECT COUNT(*) AS cnt FROM trades WHERE guild_id = ? AND user_id = ?'),
+
+  // Seasons / ROI leaderboard
+  allGuildUsers:     db.prepare('SELECT user_id, balance FROM users WHERE guild_id = ?'),
+  allGuildHoldings:  db.prepare('SELECT user_id, ticker, asset_type, shares, avg_cost FROM holdings WHERE guild_id = ? AND shares > 0'),
+  insertSeasonWinner: db.prepare('INSERT OR IGNORE INTO season_winners (guild_id, season_no, user_id, rank, balance) VALUES (?, ?, ?, ?, ?)'),
+  getSeasonWinners:   db.prepare('SELECT * FROM season_winners WHERE guild_id = ? AND season_no = ? ORDER BY rank ASC'),
 
   // Polymart account links (keyed by Discord user ID — cross-guild)
   getLink:    db.prepare('SELECT * FROM polymart_links WHERE discord_user_id = ?'),
@@ -229,6 +279,28 @@ export const resetUserData = db.transaction((guildId, userId, startingBalance) =
   stmt.updateBalance.run(startingBalance, guildId, userId);
   stmt.deleteHoldingsForUser.run(guildId, userId);
   stmt.deleteTradesForUser.run(guildId, userId);
+});
+
+// Snapshot the current top 10 into season_winners, bump the season number, and
+// wipe every player's positions/balance back to the starting line. Atomic.
+export const resetSeason = db.transaction((guildId, startingBalance) => {
+  const config   = stmt.getConfig.get(guildId);
+  const seasonNo = config?.season_no ?? 1;
+
+  const standings = stmt.serverLeaderboard.all(guildId);
+  standings.forEach((row, i) =>
+    stmt.insertSeasonWinner.run(guildId, seasonNo, row.user_id, i + 1, row.balance)
+  );
+
+  for (const u of stmt.allGuildUsers.all(guildId)) {
+    stmt.updateBalance.run(startingBalance, guildId, u.user_id);
+    stmt.deleteHoldingsForUser.run(guildId, u.user_id);
+    stmt.deleteTradesForUser.run(guildId, u.user_id);
+    stmt.setStreak.run(0, 0, guildId, u.user_id);
+  }
+
+  db.prepare('UPDATE guild_config SET season_no = season_no + 1 WHERE guild_id = ?').run(guildId);
+  return { endedSeason: seasonNo, winners: standings.length };
 });
 
 export default db;

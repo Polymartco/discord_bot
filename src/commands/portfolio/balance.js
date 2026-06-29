@@ -3,6 +3,7 @@ import { getOrCreateUser, stmt, getConfig } from '../../db.js';
 import { botApi } from '../../botApi.js';
 import { api, ApiError } from '../../api.js';
 import { cash, colorOf, GOLD, BLUE, errorEmbed } from '../../utils.js';
+import { rankTitle, levelFromXp } from '../../progression.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -81,6 +82,8 @@ export default {
     const invested   = holdings.reduce((s, h) => s + h.shares * h.avg_cost, 0);
     const unrealised = portfolioValue - invested;
 
+    const rank = rankTitle(levelFromXp(dbUser.xp ?? 0));
+
     const embed = new EmbedBuilder()
       .setTitle(`${user.username}'s Account`)
       .setColor(colorOf(unrealised))
@@ -91,6 +94,8 @@ export default {
         { name: 'Invested',        value: cash(invested),          inline: true },
         { name: 'Unrealised P&L',  value: cash(unrealised),        inline: true },
         { name: 'Holdings',        value: String(holdings.length), inline: true },
+        { name: 'Level',           value: `${rank.emoji} L${dbUser.level ?? 1} · ${rank.title}`, inline: true },
+        { name: 'Daily Streak',    value: `🔥 ${dbUser.daily_streak ?? 0}`, inline: true },
       );
 
     if (staleCount > 0) {

@@ -2,12 +2,15 @@ import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { api, ApiError } from '../../api.js';
 import { sign, colorOf, BLUE, errorEmbed } from '../../utils.js';
 import { validateTickerFormat, ValidationError } from '../../validate.js';
+import { respondTickerAutocomplete } from '../../autocomplete.js';
 
 export default {
   data: new SlashCommandBuilder()
     .setName('info')
     .setDescription('Company profile, analyst rating, and generated news')
-    .addStringOption(o => o.setName('ticker').setDescription('Stock ticker').setRequired(true)),
+    .addStringOption(o => o.setName('ticker').setDescription('Stock ticker').setRequired(true).setAutocomplete(true)),
+
+  autocomplete: (interaction) => respondTickerAutocomplete(interaction, 'stock'),
 
   async execute(interaction) {
     await interaction.deferReply();

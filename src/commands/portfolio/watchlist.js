@@ -4,6 +4,7 @@ import { botApi } from '../../botApi.js';
 import { api, detectAssetType } from '../../api.js';
 import { BLUE, errorEmbed, successEmbed } from '../../utils.js';
 import { ValidationError, validateTickerFormat, assertAssetExists } from '../../validate.js';
+import { respondTickerAutocomplete } from '../../autocomplete.js';
 
 const MAX_WATCHLIST = 20;
 
@@ -11,11 +12,12 @@ export default {
   data: new SlashCommandBuilder()
     .setName('watchlist')
     .setDescription('Manage your watchlist')
+    .setDMPermission(false)
     .addSubcommand(s => s.setName('view').setDescription('View your watchlist'))
     .addSubcommand(s =>
       s.setName('add')
         .setDescription('Add an asset to your watchlist')
-        .addStringOption(o => o.setName('ticker').setDescription('Ticker/symbol/pair').setRequired(true))
+        .addStringOption(o => o.setName('ticker').setDescription('Ticker/symbol/pair').setRequired(true).setAutocomplete(true))
         .addStringOption(o =>
           o.setName('type').setDescription('Asset type (auto-detected if omitted)')
             .addChoices(
@@ -28,8 +30,23 @@ export default {
     .addSubcommand(s =>
       s.setName('remove')
         .setDescription('Remove an asset')
-        .addStringOption(o => o.setName('ticker').setDescription('Ticker to remove').setRequired(true))
+        .addStringOption(o => o.setName('ticker').setDescription('Ticker to remove').setRequired(true).setAutocomplete(true))
     ),
+
+  async autocomplete(interaction) {
+    // remove → suggest items already on the watchlist; add → search all assets.
+    if (interaction.options.getSubcommand() === 'remove') {
+      const focused = String(interaction.options.getFocused() ?? '').trim().toUpperCase();
+      try {
+        const list = stmt.getWatchlist.all(interaction.guildId, interaction.user.id);
+        return interaction.respond(list
+          .filter(w => !focused || w.ticker.includes(focused))
+          .slice(0, 25)
+          .map(w => ({ name: `${w.ticker} (${w.asset_type})`.slice(0, 100), value: w.ticker })));
+      } catch { return interaction.respond([]); }
+    }
+    return respondTickerAutocomplete(interaction, interaction.options.getString('type') ?? 'stock');
+  },
 
   async execute(interaction) {
     const sub  = interaction.options.getSubcommand();

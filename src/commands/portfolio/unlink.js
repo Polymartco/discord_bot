@@ -21,12 +21,13 @@ export default {
     try {
       await botApi('DELETE', `/discord/user/${interaction.user.id}`);
     } catch (err) {
-      // If the server already removed the link (404), still clean up locally
+      // Log but never block — the local record must always be cleared so the user can re-link
       if (!err.message.includes('404')) {
-        return interaction.editReply({ embeds: [errorEmbed(`Unlink failed: ${err.message}`)] });
+        console.warn(`[Unlink] Server-side unlink had an error for ${interaction.user.id}:`, err.message);
       }
     }
 
+    // Always delete the local record, regardless of server outcome
     stmt.deleteLink.run(interaction.user.id);
 
     await interaction.editReply({

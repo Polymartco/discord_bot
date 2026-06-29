@@ -2,7 +2,7 @@ import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getOrCreateUser, stmt, getConfig } from '../../db.js';
 import { botApi } from '../../botApi.js';
 import { api } from '../../api.js';
-import { cash, sign, priceFmt, BLUE, errorEmbed } from '../../utils.js';
+import { cash, sign, priceFmt, BLUE, errorEmbed, portfolioDonutAttachment } from '../../utils.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -73,6 +73,7 @@ export default {
     );
 
     let staleCount = 0;
+    const slices = [];
     const fields = holdings.map((h, i) => {
       let price = h.avg_cost;
       let isStale = false;
@@ -90,6 +91,8 @@ export default {
       const pnlPct = cost > 0 ? (pnl / cost) * 100 : 0;
       const staleTag = isStale ? ' ⚠️' : '';
 
+      slices.push({ label: h.ticker, value });
+
       return {
         name:   `${h.ticker} (${h.asset_type})${staleTag}`,
         value:  `${h.shares.toLocaleString()} shares @ avg ${cash(h.avg_cost)}\nNow: ${priceFmt(price)} | Value: ${cash(value)}\nP&L: ${cash(pnl)} (${sign(pnlPct)})`,
@@ -106,6 +109,10 @@ export default {
       embed.setFooter({ text: `⚠️ ${staleCount} position(s) showing cost basis — live price temporarily unavailable` });
     }
 
-    await interaction.editReply({ embeds: [embed] });
+    // Allocation donut (degrades to no image if canvas is unavailable).
+    const donut = portfolioDonutAttachment(slices, { title: `${user.username}'s Allocation` });
+    if (donut) embed.setImage('attachment://allocation.png');
+
+    await interaction.editReply({ embeds: [embed], ...(donut ? { files: [donut] } : {}) });
   },
 };

@@ -4,6 +4,7 @@ import { botApi } from '../../botApi.js';
 import { detectAssetType, getFreshPrice, ApiError } from '../../api.js';
 import { GOLD, errorEmbed, successEmbed, cash } from '../../utils.js';
 import { ValidationError, validateTickerFormat, assertValidPrice } from '../../validate.js';
+import { respondTickerAutocomplete } from '../../autocomplete.js';
 
 const MAX_ALERTS_LOCAL  = 5;
 const MAX_ALERTS_LINKED = 10;
@@ -12,10 +13,11 @@ export default {
   data: new SlashCommandBuilder()
     .setName('alert')
     .setDescription('Set, list, or clear price alerts')
+    .setDMPermission(false)
     .addSubcommand(s =>
       s.setName('set')
         .setDescription('Set a price alert')
-        .addStringOption(o => o.setName('ticker').setDescription('Ticker/symbol/pair').setRequired(true))
+        .addStringOption(o => o.setName('ticker').setDescription('Ticker/symbol/pair').setRequired(true).setAutocomplete(true))
         .addStringOption(o =>
           o.setName('direction').setDescription('Alert when price goes above or below').setRequired(true)
             .addChoices({ name: 'Above', value: 'above' }, { name: 'Below', value: 'below' })
@@ -37,8 +39,22 @@ export default {
     .addSubcommand(s =>
       s.setName('clear')
         .setDescription('Clear an alert by ID')
-        .addStringOption(o => o.setName('id').setDescription('Alert ID (from /alert list)').setRequired(true))
+        .addStringOption(o => o.setName('id').setDescription('Alert ID (from /alert list)').setRequired(true).setAutocomplete(true))
     ),
+
+  async autocomplete(interaction) {
+    // clear → suggest the user's own local alert IDs; set → ticker search.
+    if (interaction.options.getSubcommand() === 'clear') {
+      try {
+        const alerts = stmt.getAlerts.all(interaction.guildId, interaction.user.id);
+        return interaction.respond(alerts.slice(0, 25).map(a => ({
+          name:  `#${a.id} ${a.ticker} ${a.direction} ${a.threshold}`.slice(0, 100),
+          value: String(a.id),
+        })));
+      } catch { return interaction.respond([]); }
+    }
+    return respondTickerAutocomplete(interaction, interaction.options.getString('type') ?? 'stock');
+  },
 
   async execute(interaction) {
     const sub  = interaction.options.getSubcommand();

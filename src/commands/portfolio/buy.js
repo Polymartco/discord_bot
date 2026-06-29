@@ -3,6 +3,9 @@ import { getOrCreateUser, getConfig, executeTrade, stmt } from '../../db.js';
 import { botApi } from '../../botApi.js';
 import { detectAssetType, getFreshPrice, getCachedEntry, pricePath, ApiError } from '../../api.js';
 import { cash, colorOf, GREEN, errorEmbed } from '../../utils.js';
+import { recordTrade, progressField } from '../../postTrade.js';
+import { respondTickerAutocomplete } from '../../autocomplete.js';
+import { tradeButtons } from '../../cards.js';
 import {
   ValidationError,
   validateTickerFormat,
@@ -18,7 +21,8 @@ export default {
   data: new SlashCommandBuilder()
     .setName('buy')
     .setDescription('Buy shares of a stock, forex pair, or crypto coin')
-    .addStringOption(o => o.setName('ticker').setDescription('Ticker/symbol/pair').setRequired(true))
+    .setDMPermission(false)
+    .addStringOption(o => o.setName('ticker').setDescription('Ticker/symbol/pair').setRequired(true).setAutocomplete(true))
     .addNumberOption(o =>
       o.setName('shares').setDescription('Number of shares/units').setRequired(true).setMinValue(0.0001)
     )
@@ -30,6 +34,8 @@ export default {
           { name: 'Forex',  value: 'forex'  },
         )
     ),
+
+  autocomplete: (interaction) => respondTickerAutocomplete(interaction, interaction.options.getString('type') ?? 'stock'),
 
   async execute(interaction) {
     await interaction.deferReply({ ephemeral: true });
@@ -144,7 +150,7 @@ export default {
     const warnings = [slip, concentration].filter(Boolean).join(' • ');
 
     const embed = new EmbedBuilder()
-      .setColor(0x22c55e)
+      .setColor(GREEN)
       .setTitle('✅ Order Filled — BUY')
       .addFields(
         { name: 'Asset',       value: ticker,                            inline: true },
@@ -159,6 +165,15 @@ export default {
       )
       .setFooter({ text: `Executed ${new Date().toLocaleTimeString()}${warnings ? ` • ${warnings}` : ''}` });
 
-    await interaction.editReply({ embeds: [embed] });
+    // ── 9. Award XP / unlock achievements ─────────────────────────────────────
+    const field = progressField(recordTrade({
+      guildId, userId: user.id, side: 'buy', total: shares * price, balance: result.newBalance,
+    }));
+    if (field) embed.addFields(field);
+
+    await interaction.editReply({
+      embeds:     [embed],
+      components: [tradeButtons(user.id, ticker, assetType, { includeRefresh: false })],
+    });
   },
 };

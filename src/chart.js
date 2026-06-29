@@ -270,6 +270,99 @@ export function drawSectorHeatmap(stocks) {
   return canvas.toBuffer('image/png');
 }
 
+// ── Portfolio allocation donut ────────────────────────────────────────────────
+// slices: [{ label, value }]. Top 8 shown; the remainder is grouped into "Other".
+export function drawPortfolioDonut(slices, { title = 'Portfolio Allocation' } = {}) {
+  const data = (slices || []).filter(s => s.value > 0).sort((a, b) => b.value - a.value);
+  if (!data.length) return null;
+
+  const total = data.reduce((s, d) => s + d.value, 0);
+  const top   = data.slice(0, 8);
+  const rest  = data.slice(8).reduce((s, d) => s + d.value, 0);
+  if (rest > 0) top.push({ label: 'Other', value: rest });
+
+  const W = 800, H = 420;
+  const canvas = createCanvas(W, H);
+  const ctx    = canvas.getContext('2d');
+  ctx.fillStyle = COLORS.bg; ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = COLORS.textBright; ctx.font = 'bold 20px monospace'; ctx.textAlign = 'left';
+  ctx.fillText(`🥧 ${title}`, 24, 34);
+
+  const cx = 210, cy = 235, rOuter = 150, rInner = 88;
+  let start = -Math.PI / 2;
+  top.forEach((d, i) => {
+    const angle = (d.value / total) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, rOuter, start, start + angle);
+    ctx.closePath();
+    ctx.fillStyle = MULTI_COLORS[i % MULTI_COLORS.length];
+    ctx.fill();
+    start += angle;
+  });
+
+  // Punch the donut hole and label the total in the centre.
+  ctx.beginPath(); ctx.arc(cx, cy, rInner, 0, Math.PI * 2); ctx.fillStyle = COLORS.bg; ctx.fill();
+  ctx.fillStyle = COLORS.text;       ctx.textAlign = 'center'; ctx.font = '14px monospace';
+  ctx.fillText('Total', cx, cy - 6);
+  ctx.fillStyle = COLORS.textBright; ctx.font = 'bold 17px monospace';
+  ctx.fillText(`$${Math.round(total).toLocaleString()}`, cx, cy + 16);
+
+  // Legend.
+  let ly = 120; const lx = 440;
+  ctx.font = '14px monospace';
+  top.forEach((d, i) => {
+    const pct = (d.value / total * 100).toFixed(1);
+    ctx.fillStyle = MULTI_COLORS[i % MULTI_COLORS.length];
+    ctx.fillRect(lx, ly - 12, 14, 14);
+    ctx.fillStyle = COLORS.textBright; ctx.textAlign = 'left';
+    ctx.fillText(d.label.slice(0, 14), lx + 22, ly);
+    ctx.fillStyle = COLORS.text; ctx.textAlign = 'right';
+    ctx.fillText(`${pct}%  $${Math.round(d.value).toLocaleString()}`, W - 24, ly);
+    ly += 30;
+  });
+
+  return canvas.toBuffer('image/png');
+}
+
+// ── Leaderboard card ──────────────────────────────────────────────────────────
+// rows: [{ name, value (display string), barValue (number for bar length) }]
+export function drawLeaderboardCard(rows, { title = 'Server Leaderboard' } = {}) {
+  if (!rows?.length) return null;
+
+  const rowH = 44, topPad = 64, W = 800;
+  const H = topPad + rows.length * rowH + 16;
+  const canvas = createCanvas(W, H);
+  const ctx    = canvas.getContext('2d');
+  ctx.fillStyle = COLORS.bg; ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = COLORS.textBright; ctx.font = 'bold 22px monospace'; ctx.textAlign = 'left';
+  ctx.fillText(`🏆 ${title}`, 24, 40);
+
+  const maxVal  = Math.max(...rows.map(r => Math.abs(r.barValue ?? 0)), 1);
+  const barX    = 300, barMaxW = 380;
+
+  rows.forEach((r, i) => {
+    const y     = topPad + i * rowH;
+    const medal = ['🥇', '🥈', '🥉'][i] ?? `#${i + 1}`;
+
+    ctx.fillStyle = i < 3 ? COLORS.textBright : COLORS.text;
+    ctx.font = 'bold 16px monospace'; ctx.textAlign = 'left';
+    ctx.fillText(medal, 24, y + 22);
+    ctx.fillText(String(r.name).slice(0, 18), 74, y + 22);
+
+    const bw = Math.max(4, Math.round((Math.abs(r.barValue ?? 0) / maxVal) * barMaxW));
+    ctx.fillStyle = (r.barValue ?? 0) >= 0 ? COLORS.green : COLORS.red;
+    ctx.fillRect(barX, y + 8, bw, 20);
+
+    ctx.fillStyle = COLORS.textBright; ctx.textAlign = 'right'; ctx.font = '14px monospace';
+    ctx.fillText(r.value, W - 24, y + 23);
+  });
+
+  return canvas.toBuffer('image/png');
+}
+
 // ── Comparison chart: 2+ assets normalized and overlaid ──────────────────────
 export function drawCompareChart(assets) {
   if (!assets || assets.length === 0) return null;

@@ -3,6 +3,9 @@ import { getOrCreateUser, getConfig, executeTrade, stmt } from '../../db.js';
 import { botApi } from '../../botApi.js';
 import { detectAssetType, getFreshPrice, getCachedEntry, pricePath, ApiError } from '../../api.js';
 import { cash, colorOf, sign, errorEmbed } from '../../utils.js';
+import { recordTrade, progressField } from '../../postTrade.js';
+import { respondTickerAutocomplete } from '../../autocomplete.js';
+import { tradeButtons } from '../../cards.js';
 import {
   ValidationError,
   validateTickerFormat,
@@ -18,7 +21,8 @@ export default {
   data: new SlashCommandBuilder()
     .setName('sell')
     .setDescription('Sell shares of a stock, forex pair, or crypto coin')
-    .addStringOption(o => o.setName('ticker').setDescription('Ticker/symbol/pair').setRequired(true))
+    .setDMPermission(false)
+    .addStringOption(o => o.setName('ticker').setDescription('Ticker/symbol/pair').setRequired(true).setAutocomplete(true))
     .addStringOption(o => o.setName('shares').setDescription('Number of shares/units, or "all"').setRequired(true))
     .addStringOption(o =>
       o.setName('type').setDescription('Asset type (auto-detected if omitted)')
@@ -28,6 +32,20 @@ export default {
           { name: 'Forex',  value: 'forex'  },
         )
     ),
+
+  // Suggest the tickers the user actually holds (cheap, local); fall back to search.
+  async autocomplete(interaction) {
+    const focused = String(interaction.options.getFocused() ?? '').trim().toUpperCase();
+    try {
+      const holdings = stmt.getAllHoldings.all(interaction.guildId, interaction.user.id);
+      const choices = holdings
+        .filter(h => !focused || h.ticker.includes(focused))
+        .slice(0, 25)
+        .map(h => ({ name: `${h.ticker} — ${h.shares} sh (${h.asset_type})`.slice(0, 100), value: h.ticker }));
+      if (choices.length) return interaction.respond(choices);
+    } catch { /* fall through to search */ }
+    return respondTickerAutocomplete(interaction, interaction.options.getString('type') ?? 'stock');
+  },
 
   async execute(interaction) {
     await interaction.deferReply({ ephemeral: true });
@@ -186,9 +204,15 @@ export default {
       positionClosed ? 'Position closed' : null,
     ].filter(Boolean).join(' • ');
 
+    // Celebratory flavour for outsized wins/losses.
+    const title =
+      pnlPct >= 25  ? '🚀 Order Filled — SELL (Big Win!)' :
+      pnlPct <= -25 ? '🩸 Order Filled — SELL (Ouch)'     :
+                      '✅ Order Filled — SELL';
+
     const embed = new EmbedBuilder()
       .setColor(colorOf(result.pnl))
-      .setTitle('✅ Order Filled — SELL')
+      .setTitle(title)
       .addFields(
         { name: 'Asset',          value: ticker,                                    inline: true },
         { name: 'Type',           value: assetType,                                 inline: true },
@@ -202,6 +226,15 @@ export default {
       )
       .setFooter({ text: footer });
 
-    await interaction.editReply({ embeds: [embed] });
+    // Award XP / unlock achievements (e.g. Green Day, Ten Bagger).
+    const field = progressField(recordTrade({
+      guildId, userId: user.id, side: 'sell', total: shares * price, pnlPct, balance: result.newBalance,
+    }));
+    if (field) embed.addFields(field);
+
+    await interaction.editReply({
+      embeds:     [embed],
+      components: [tradeButtons(user.id, ticker, assetType, { includeRefresh: false })],
+    });
   },
 };

@@ -146,35 +146,39 @@ export function getCachedEntry(path) {
 }
 
 // ── Public API surface ────────────────────────────────────────────────────────
+// enc() URL-encodes every user-supplied identifier before it touches a path.
+// Inputs are already charset-validated upstream, but this is defense-in-depth.
+const enc = encodeURIComponent;
+
 export const api = {
   market:          ()            => apiFetch('/getMarket'),
-  stock:           (t)           => apiFetch(`/getStock?ticker=${t}`),
-  stocks:          (s)           => apiFetch(s ? `/getStocks?sector=${s}` : '/getStocks'),
-  sector:          (s)           => apiFetch(`/getSector?sector=${s}`),
+  stock:           (t)           => apiFetch(`/getStock?ticker=${enc(t)}`),
+  stocks:          (s)           => apiFetch(s ? `/getStocks?sector=${enc(s)}` : '/getStocks'),
+  sector:          (s)           => apiFetch(`/getSector?sector=${enc(s)}`),
   sectors:         ()            => apiFetch('/getSectors'),
   topMovers:       (n = 5)       => apiFetch(`/getTopMovers?limit=${n}`),
-  leaderboard:     (by, dir, n)  => apiFetch(`/getLeaderboard?by=${by}&dir=${dir}&limit=${n}`),
-  history:         (t, n)        => apiFetch(`/getHistory?ticker=${t}&limit=${n}`),
-  search:          (q)           => apiFetch(`/search?q=${encodeURIComponent(q)}`),
+  leaderboard:     (by, dir, n)  => apiFetch(`/getLeaderboard?by=${enc(by)}&dir=${enc(dir)}&limit=${n}`),
+  history:         (t, n)        => apiFetch(`/getHistory?ticker=${enc(t)}&limit=${n}`),
+  search:          (q)           => apiFetch(`/search?q=${enc(q)}`),
   events:          (n)           => apiFetch(`/getEvents?limit=${n}`),
   macro:           ()            => apiFetch('/getMacro'),
-  info:            (t)           => apiFetch(`/info?ticker=${t}`),
+  info:            (t)           => apiFetch(`/info?ticker=${enc(t)}`),
 
-  forexPairs:      (cat)         => apiFetch(cat ? `/forex/getPairs?category=${cat}` : '/forex/getPairs'),
-  forexPair:       (p)           => apiFetch(`/forex/getPair?pair=${p}`),
-  forexHistory:    (p, n)        => apiFetch(`/forex/getHistory?pair=${p}&limit=${n}`),
+  forexPairs:      (cat)         => apiFetch(cat ? `/forex/getPairs?category=${enc(cat)}` : '/forex/getPairs'),
+  forexPair:       (p)           => apiFetch(`/forex/getPair?pair=${enc(p)}`),
+  forexHistory:    (p, n)        => apiFetch(`/forex/getHistory?pair=${enc(p)}&limit=${n}`),
   forexTop:        (n)           => apiFetch(`/forex/getTopMovers?limit=${n}`),
   forexOverview:   ()            => apiFetch('/forex/getMarketOverview'),
-  forexSearch:     (q)           => apiFetch(`/forex/search?q=${encodeURIComponent(q)}`),
+  forexSearch:     (q)           => apiFetch(`/forex/search?q=${enc(q)}`),
 
-  cryptoCoins:     (cat)         => apiFetch(cat ? `/crypto/getCoins?category=${cat}` : '/crypto/getCoins'),
-  cryptoCoin:      (s)           => apiFetch(`/crypto/getCoin?symbol=${s}`),
-  cryptoHistory:   (s, n)        => apiFetch(`/crypto/getHistory?symbol=${s}&limit=${n}`),
+  cryptoCoins:     (cat)         => apiFetch(cat ? `/crypto/getCoins?category=${enc(cat)}` : '/crypto/getCoins'),
+  cryptoCoin:      (s)           => apiFetch(`/crypto/getCoin?symbol=${enc(s)}`),
+  cryptoHistory:   (s, n)        => apiFetch(`/crypto/getHistory?symbol=${enc(s)}&limit=${n}`),
   cryptoTop:       (n)           => apiFetch(`/crypto/getTopMovers?limit=${n}`),
   cryptoOverview:  ()            => apiFetch('/crypto/getMarketOverview'),
-  cryptoSearch:    (q)           => apiFetch(`/crypto/search?q=${encodeURIComponent(q)}`),
+  cryptoSearch:    (q)           => apiFetch(`/crypto/search?q=${enc(q)}`),
   cryptoLeaderboard: (by, dir, n, cat) =>
-    apiFetch(`/crypto/getLeaderboard?by=${by}&dir=${dir}&limit=${n}${cat ? `&category=${cat}` : ''}`),
+    apiFetch(`/crypto/getLeaderboard?by=${enc(by)}&dir=${enc(dir)}&limit=${n}${cat ? `&category=${enc(cat)}` : ''}`),
 };
 
 // ── Asset-type detection ──────────────────────────────────────────────────────
@@ -201,9 +205,9 @@ export async function getCurrentPrice(ticker, assetType) {
  */
 export async function getFreshPrice(ticker, assetType) {
   let data;
-  if (assetType === 'forex')  data = await apiFetch(`/forex/getPair?pair=${ticker}`,   { fresh: true });
-  else if (assetType === 'crypto') data = await apiFetch(`/crypto/getCoin?symbol=${ticker}`, { fresh: true });
-  else                             data = await apiFetch(`/getStock?ticker=${ticker}`,        { fresh: true });
+  if (assetType === 'forex')  data = await apiFetch(`/forex/getPair?pair=${enc(ticker)}`,   { fresh: true });
+  else if (assetType === 'crypto') data = await apiFetch(`/crypto/getCoin?symbol=${enc(ticker)}`, { fresh: true });
+  else                             data = await apiFetch(`/getStock?ticker=${enc(ticker)}`,        { fresh: true });
 
   if (typeof data.price !== 'number' || !Number.isFinite(data.price) || data.price <= 0) {
     throw new ApiError(`No valid price returned for ${ticker}.`);
@@ -213,7 +217,7 @@ export async function getFreshPrice(ticker, assetType) {
 
 /** Path builder — used externally to read cached prices before a fresh fetch. */
 export function pricePath(ticker, assetType) {
-  if (assetType === 'forex')  return `/forex/getPair?pair=${ticker}`;
-  if (assetType === 'crypto') return `/crypto/getCoin?symbol=${ticker}`;
-  return `/getStock?ticker=${ticker}`;
+  if (assetType === 'forex')  return `/forex/getPair?pair=${enc(ticker)}`;
+  if (assetType === 'crypto') return `/crypto/getCoin?symbol=${enc(ticker)}`;
+  return `/getStock?ticker=${enc(ticker)}`;
 }

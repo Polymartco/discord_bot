@@ -4,6 +4,9 @@ import { readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { startAlertPoller } from './alertPoller.js';
+import { handleInteraction } from './interactionRouter.js';
+import './paginator.js';   // side-effect: registers the 'page' component handler
+import './components.js';  // side-effect: registers 'trade' / 'view' component handlers
 import db from './db.js';
 
 // ── Environment validation ────────────────────────────────────────────────────
@@ -55,28 +58,9 @@ client.once('ready', () => {
   startAlertPoller(client);
 });
 
-client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-
-  const cmd = client.commands.get(interaction.commandName);
-  if (!cmd) return;
-
-  try {
-    await cmd.execute(interaction);
-  } catch (err) {
-    console.error(`[Cmd] /${interaction.commandName} threw:`, err);
-    const msg = { content: '❌ Something went wrong. Please try again.', ephemeral: true };
-    try {
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp(msg);
-      } else {
-        await interaction.reply(msg);
-      }
-    } catch {
-      // Interaction may have expired — nothing we can do
-    }
-  }
-});
+// All interaction types (commands, autocomplete, buttons, selects) flow through
+// the central router, which handles throttling, ownership, and error envelopes.
+client.on('interactionCreate', interaction => handleInteraction(interaction, client));
 
 client.on('warn',  msg  => console.warn('[Discord.js warn]',  msg));
 client.on('error', err  => console.error('[Discord.js error]', err));

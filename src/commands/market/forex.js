@@ -2,12 +2,15 @@ import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { api, ApiError } from '../../api.js';
 import { chartAttachment, sign, colorOf, priceFmt, errorEmbed } from '../../utils.js';
 import { validateTickerFormat, ValidationError } from '../../validate.js';
+import { respondTickerAutocomplete } from '../../autocomplete.js';
 
 export default {
   data: new SlashCommandBuilder()
     .setName('forex')
     .setDescription('Currency pair detail with chart')
-    .addStringOption(o => o.setName('pair').setDescription('Forex pair e.g. EURUSD').setRequired(true)),
+    .addStringOption(o => o.setName('pair').setDescription('Forex pair e.g. EURUSD').setRequired(true).setAutocomplete(true)),
+
+  autocomplete: (interaction) => respondTickerAutocomplete(interaction, 'forex'),
 
   async execute(interaction) {
     await interaction.deferReply();

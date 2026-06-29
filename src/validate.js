@@ -176,7 +176,7 @@ export function assertCommandCooldown(userId, commandKey, cooldownMs) {
 export function handleKnownError(err, interaction, editReply = true) {
   if (err instanceof ValidationError || err instanceof ApiError) {
     const embed = {
-      color: 0xef4444,
+      color: 0xe74c3c, // matches RED in utils palette (kept inline — validate.js stays dep-light)
       description: `❌ ${err.message}`,
     };
     const payload = { embeds: [embed] };

@@ -11,17 +11,30 @@ export const cash     = n => `$${n.toLocaleString('en-US', { minimumFractionDigi
 export const priceFmt = (n, decimals = 4) => n < 1 ? n.toFixed(5) : n < 100 ? n.toFixed(decimals) : n.toFixed(2);
 export const colorOf  = n => n >= 0 ? GREEN : RED;
 
+/** Compact money for large figures: $1.2M / $3.4K. Falls back to cash() under $1k. */
+export function compact(n) {
+  const abs = Math.abs(n);
+  if (abs >= 1e9) return `${n < 0 ? '-' : ''}$${(abs / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `${n < 0 ? '-' : ''}$${(abs / 1e6).toFixed(2)}M`;
+  if (abs >= 1e3) return `${n < 0 ? '-' : ''}$${(abs / 1e3).toFixed(1)}K`;
+  return cash(n);
+}
+
 // canvas is optional — all chart helpers return null when not installed
-let _drawPriceChart    = null;
+let _drawPriceChart     = null;
 let _drawMarketOverview = null;
 let _drawSectorHeatmap  = null;
 let _drawCompareChart   = null;
+let _drawPortfolioDonut = null;
+let _drawLeaderboardCard = null;
 try {
   const mod = await import('./chart.js');
-  _drawPriceChart     = mod.drawPriceChart;
-  _drawMarketOverview = mod.drawMarketOverview;
-  _drawSectorHeatmap  = mod.drawSectorHeatmap;
-  _drawCompareChart   = mod.drawCompareChart;
+  _drawPriceChart      = mod.drawPriceChart;
+  _drawMarketOverview  = mod.drawMarketOverview;
+  _drawSectorHeatmap   = mod.drawSectorHeatmap;
+  _drawCompareChart    = mod.drawCompareChart;
+  _drawPortfolioDonut  = mod.drawPortfolioDonut;
+  _drawLeaderboardCard = mod.drawLeaderboardCard;
 } catch {}
 
 // ── Single price chart ────────────────────────────────────────────────────────
@@ -64,6 +77,24 @@ export function compareChartAttachment(assets) {
   } catch { return null; }
 }
 
+// ── Portfolio allocation donut ────────────────────────────────────────────────
+export function portfolioDonutAttachment(slices, opts) {
+  if (!_drawPortfolioDonut) return null;
+  try {
+    const buf = _drawPortfolioDonut(slices, opts);
+    return buf ? new AttachmentBuilder(buf, { name: 'allocation.png' }) : null;
+  } catch { return null; }
+}
+
+// ── Leaderboard card ──────────────────────────────────────────────────────────
+export function leaderboardCardAttachment(rows, opts) {
+  if (!_drawLeaderboardCard) return null;
+  try {
+    const buf = _drawLeaderboardCard(rows, opts);
+    return buf ? new AttachmentBuilder(buf, { name: 'leaderboard.png' }) : null;
+  } catch { return null; }
+}
+
 // ── Embed helpers ─────────────────────────────────────────────────────────────
 export function errorEmbed(message) {
   return new EmbedBuilder().setColor(RED).setDescription(`❌ ${message}`);
@@ -71,6 +102,18 @@ export function errorEmbed(message) {
 
 export function successEmbed(message) {
   return new EmbedBuilder().setColor(GREEN).setDescription(`✅ ${message}`);
+}
+
+/**
+ * Branded embed with a consistent palette colour, timestamp, and "Polymart" footer.
+ * Pass `interaction` to stamp the bot avatar into the footer icon.
+ */
+export function brandEmbed({ title, color = BLUE, interaction } = {}) {
+  const embed = new EmbedBuilder().setColor(color).setTimestamp();
+  if (title) embed.setTitle(title);
+  const icon = interaction?.client?.user?.displayAvatarURL?.();
+  embed.setFooter({ text: 'Polymart', ...(icon ? { iconURL: icon } : {}) });
+  return embed;
 }
 
 export function requireSetup(config, interaction) {

@@ -2,12 +2,15 @@ import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { api, ApiError } from '../../api.js';
 import { chartAttachment, sign, colorOf, priceFmt, cash, errorEmbed } from '../../utils.js';
 import { validateTickerFormat, ValidationError } from '../../validate.js';
+import { respondTickerAutocomplete } from '../../autocomplete.js';
 
 export default {
   data: new SlashCommandBuilder()
     .setName('crypto')
     .setDescription('Crypto coin detail with chart')
-    .addStringOption(o => o.setName('symbol').setDescription('Crypto symbol e.g. BTCX').setRequired(true)),
+    .addStringOption(o => o.setName('symbol').setDescription('Crypto symbol e.g. BTCX').setRequired(true).setAutocomplete(true)),
+
+  autocomplete: (interaction) => respondTickerAutocomplete(interaction, 'crypto'),
 
   async execute(interaction) {
     await interaction.deferReply();
