@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const commands  = [];
-const folders   = ['market', 'portfolio', 'admin'];
+const folders   = ['market', 'portfolio', 'admin', 'casino'];
 
 for (const folder of folders) {
   const files = readdirSync(join(__dirname, 'commands', folder)).filter(f => f.endsWith('.js'));

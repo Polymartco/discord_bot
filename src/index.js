@@ -37,7 +37,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 client.commands = new Collection();
 
-const commandFolders = ['market', 'portfolio', 'admin'];
+const commandFolders = ['market', 'portfolio', 'admin', 'casino'];
 for (const folder of commandFolders) {
   const files = readdirSync(join(__dirname, 'commands', folder)).filter(f => f.endsWith('.js'));
   for (const file of files) {

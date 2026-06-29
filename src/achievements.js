@@ -12,6 +12,13 @@ export const ACHIEVEMENTS = [
   { code: 'whale',          name: 'Whale Alert',    emoji: '🐋', desc: 'Reach a $1,000,000 cash balance.' },
   { code: 'streak_7',       name: 'Committed',      emoji: '🔥', desc: 'Reach a 7-day daily streak.' },
   { code: 'streak_30',      name: 'Unstoppable',    emoji: '🌋', desc: 'Reach a 30-day daily streak.' },
+
+  // ── Casino ──
+  { code: 'jackpot',           name: 'Jackpot!',      emoji: '🎰', desc: 'Hit the slots jackpot.' },
+  { code: 'blackjack_natural', name: 'Natural',       emoji: '🃏', desc: 'Win with a natural blackjack.' },
+  { code: 'high_roller',       name: 'High Roller',   emoji: '💸', desc: 'Place a single bet of 100,000+.' },
+  { code: 'mines_master',      name: 'Minesweeper',   emoji: '💣', desc: 'Cash out Mines with 10+ safe tiles.' },
+  { code: 'lucky_streak',      name: 'On Fire',       emoji: '🍀', desc: 'Win 5 casino games in a row.' },
 ];
 
 const BY_CODE = new Map(ACHIEVEMENTS.map(a => [a.code, a]));

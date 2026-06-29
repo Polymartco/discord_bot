@@ -98,6 +98,28 @@ db.exec(`
     PRIMARY KEY (guild_id, user_id, code)
   );
 
+  -- Per-user lifetime casino stats
+  CREATE TABLE IF NOT EXISTS casino_stats (
+    guild_id    TEXT    NOT NULL,
+    user_id     TEXT    NOT NULL,
+    games       INTEGER NOT NULL DEFAULT 0,
+    wins        INTEGER NOT NULL DEFAULT 0,
+    wagered     REAL    NOT NULL DEFAULT 0,
+    won         REAL    NOT NULL DEFAULT 0,
+    lost        REAL    NOT NULL DEFAULT 0,
+    net         REAL    NOT NULL DEFAULT 0,
+    biggest_win REAL    NOT NULL DEFAULT 0,
+    cur_streak  INTEGER NOT NULL DEFAULT 0,
+    best_streak INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (guild_id, user_id)
+  );
+
+  -- Progressive slots jackpot pool (per guild)
+  CREATE TABLE IF NOT EXISTS casino_jackpot (
+    guild_id TEXT PRIMARY KEY,
+    pool     REAL NOT NULL DEFAULT 0
+  );
+
   -- Final standings snapshot when a season is reset
   CREATE TABLE IF NOT EXISTS season_winners (
     guild_id  TEXT    NOT NULL,
@@ -127,6 +149,8 @@ addColumnIfMissing('users', 'daily_streak', 'daily_streak INTEGER NOT NULL DEFAU
 addColumnIfMissing('users', 'best_streak',  'best_streak INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('users', 'xp',           'xp INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('users', 'level',        'level INTEGER NOT NULL DEFAULT 1');
+addColumnIfMissing('users', 'last_beg',     'last_beg INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('users', 'last_work',    'last_work INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('guild_config', 'season_no', 'season_no INTEGER NOT NULL DEFAULT 1');
 
 export const stmt = {
@@ -194,6 +218,27 @@ export const stmt = {
   // Progression (streaks / XP / level)
   setStreak: db.prepare('UPDATE users SET daily_streak = ?, best_streak = MAX(best_streak, ?) WHERE guild_id = ? AND user_id = ?'),
   setXp:     db.prepare('UPDATE users SET xp = ?, level = ? WHERE guild_id = ? AND user_id = ?'),
+
+  // Casino timed rewards
+  setLastBeg:  db.prepare('UPDATE users SET last_beg = ? WHERE guild_id = ? AND user_id = ?'),
+  setLastWork: db.prepare('UPDATE users SET last_work = ? WHERE guild_id = ? AND user_id = ?'),
+
+  // Casino stats
+  getCasinoStats:    db.prepare('SELECT * FROM casino_stats WHERE guild_id = ? AND user_id = ?'),
+  upsertCasinoStats: db.prepare(`
+    INSERT INTO casino_stats (guild_id, user_id, games, wins, wagered, won, lost, net, biggest_win, cur_streak, best_streak)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(guild_id, user_id) DO UPDATE SET
+      games=excluded.games, wins=excluded.wins, wagered=excluded.wagered, won=excluded.won,
+      lost=excluded.lost, net=excluded.net, biggest_win=excluded.biggest_win,
+      cur_streak=excluded.cur_streak, best_streak=excluded.best_streak
+  `),
+  casinoLeaderboard: db.prepare('SELECT user_id, net FROM casino_stats WHERE guild_id = ? ORDER BY net DESC LIMIT 10'),
+
+  // Progressive jackpot
+  getJackpot: db.prepare('SELECT pool FROM casino_jackpot WHERE guild_id = ?'),
+  addJackpot: db.prepare('INSERT INTO casino_jackpot (guild_id, pool) VALUES (?, ?) ON CONFLICT(guild_id) DO UPDATE SET pool = pool + excluded.pool'),
+  setJackpot: db.prepare('INSERT INTO casino_jackpot (guild_id, pool) VALUES (?, ?) ON CONFLICT(guild_id) DO UPDATE SET pool = excluded.pool'),
 
   // Achievements
   getAchievements:   db.prepare('SELECT code, unlocked_at FROM achievements WHERE guild_id = ? AND user_id = ?'),

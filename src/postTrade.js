@@ -17,7 +17,9 @@ function applyXp(guildId, userId, amount) {
   return { leveledUp: newLevel > before, newLevel };
 }
 
-function unlock(guildId, userId, codes) {
+// Insert any not-yet-owned achievement codes; returns the newly unlocked defs.
+// Shared with the casino (casinoStats.js).
+export function unlockAchievements(guildId, userId, codes) {
   if (!codes.length) return [];
   const owned = new Set(stmt.getAchievements.all(guildId, userId).map(a => a.code));
   const newly = [];
@@ -30,6 +32,8 @@ function unlock(guildId, userId, codes) {
   }
   return newly;
 }
+
+const unlock = unlockAchievements;
 
 /** Run after a filled trade. `total` is dollar value, `pnlPct` only meaningful for sells. */
 export function recordTrade({ guildId, userId, side, total = 0, pnlPct = 0, balance = 0 }) {
