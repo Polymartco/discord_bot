@@ -153,6 +153,16 @@ addColumnIfMissing('users', 'last_beg',     'last_beg INTEGER NOT NULL DEFAULT 0
 addColumnIfMissing('users', 'last_work',    'last_work INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('guild_config', 'season_no', 'season_no INTEGER NOT NULL DEFAULT 1');
 
+// Self-heal legacy guild_config tables created before these columns existed.
+// Without these, /setup, /config, and /setchannel throw "no such column" on old DBs.
+addColumnIfMissing('guild_config', 'starting_balance',    'starting_balance REAL NOT NULL DEFAULT 10000');
+addColumnIfMissing('guild_config', 'trading_fee_pct',     'trading_fee_pct REAL NOT NULL DEFAULT 0.001');
+addColumnIfMissing('guild_config', 'daily_bonus',         'daily_bonus REAL NOT NULL DEFAULT 500');
+addColumnIfMissing('guild_config', 'trade_channel_id',    'trade_channel_id TEXT');
+addColumnIfMissing('guild_config', 'alert_channel_id',    'alert_channel_id TEXT');
+addColumnIfMissing('guild_config', 'announce_channel_id', 'announce_channel_id TEXT');
+addColumnIfMissing('guild_config', 'setup_by',            'setup_by TEXT');
+
 export const stmt = {
   getConfig:    db.prepare('SELECT * FROM guild_config WHERE guild_id = ?'),
   upsertConfig: db.prepare(`
