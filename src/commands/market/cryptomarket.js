@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { api } from '../../api.js';
-import { sign, colorOf, BLUE } from '../../utils.js';
+import { sign, colorOf, BLUE, polish } from '../../utils.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -23,6 +23,6 @@ export default {
         { name: 'Top Loser',        value: m.topLoser  ? `**${m.topLoser.symbol ?? m.topLoser.ticker}** ${sign(m.topLoser.changePct ?? m.topLoser.change ?? 0)}`   : '—', inline: true },
       );
 
-    await interaction.editReply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [polish(embed, interaction)] });
   },
 };

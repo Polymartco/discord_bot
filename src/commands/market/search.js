@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { api } from '../../api.js';
-import { BLUE, sign } from '../../utils.js';
+import { BLUE, sign, polish } from '../../utils.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -34,6 +34,6 @@ export default {
         { name: '🪙 Crypto', value: fmtList(crypto, 'crypto'),  inline: false },
       );
 
-    await interaction.editReply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [polish(embed, interaction)] });
   },
 };

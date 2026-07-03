@@ -1,6 +1,6 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { api } from './api.js';
-import { chartAttachment, sign, colorOf } from './utils.js';
+import { chartAttachment, sign, colorOf, polish } from './utils.js';
 import { buildId } from './interactionRouter.js';
 
 // ── Shared trade button row ───────────────────────────────────────────────────
@@ -64,6 +64,7 @@ export async function buildStockCard(interaction, rawTicker, type = 'stock') {
     .setFooter({ text: `VWAP $${vwap} • Beta ${beta} • ATR ${atr}` });
 
   if (att) embed.setImage('attachment://chart.png');
+  polish(embed, interaction);
 
   return {
     embeds:     [embed],

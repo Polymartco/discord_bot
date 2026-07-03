@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { api, ApiError } from '../../api.js';
-import { sign, BLUE, errorEmbed, compareChartAttachment } from '../../utils.js';
+import { sign, BLUE, errorEmbed, compareChartAttachment, polish } from '../../utils.js';
 import { validateTickerFormat, ValidationError } from '../../validate.js';
 
 export default {
@@ -61,6 +61,6 @@ export default {
 
     if (att) embed.setImage('attachment://compare.png');
 
-    await interaction.editReply({ embeds: [embed], ...(att ? { files: [att] } : {}) });
+    await interaction.editReply({ embeds: [polish(embed, interaction)], ...(att ? { files: [att] } : {}) });
   },
 };

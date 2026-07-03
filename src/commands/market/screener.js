@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { api, ApiError } from '../../api.js';
-import { sign, BLUE, errorEmbed } from '../../utils.js';
+import { sign, BLUE, errorEmbed, polish } from '../../utils.js';
 
 const SECTOR_CHOICES = [
   'tech','ai','crypto','bio','green','finance','gaming','health','defence',
@@ -104,6 +104,6 @@ export default {
         ].filter(Boolean).join(' • '),
       });
 
-    await interaction.editReply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [polish(embed, interaction)] });
   },
 };

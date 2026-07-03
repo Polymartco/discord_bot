@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
-import { cash, GREEN, RED, GOLD, errorEmbed } from '../../utils.js';
+import { cash, GREEN, RED, GOLD, errorEmbed, polish } from '../../utils.js';
 import { ValidationError } from '../../validate.js';
 import { ensureUser, validateBet, adjust } from '../../casinoLib.js';
 import { recordGame, unlockField, jackpotPool, contributeJackpot, awardJackpot } from '../../casinoStats.js';
@@ -80,6 +80,7 @@ export default {
       )
       .setFooter({ text: `💰 Jackpot pool: ${cash(jackpotPool(guildId))}` });
     const f = unlockField(unlocked); if (f) embed.addFields(f);
+    polish(embed, interaction);
 
     await interaction.editReply({ embeds: [embed] });
   },

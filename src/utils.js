@@ -96,12 +96,26 @@ export function leaderboardCardAttachment(rows, opts) {
 }
 
 // ── Embed helpers ─────────────────────────────────────────────────────────────
-export function errorEmbed(message) {
-  return new EmbedBuilder().setColor(RED).setDescription(`❌ ${message}`);
+/**
+ * Stamp a timestamp + "Polymart" brand mark onto an embed, preserving any
+ * footer text already set (appended as "<existing> • Polymart"). Pass
+ * `interaction` to use the bot avatar as the footer icon. Mutates and returns
+ * the same embed so it can be used inline: `embeds: [polish(embed, interaction)]`.
+ */
+export function polish(embed, interaction) {
+  const icon     = interaction?.client?.user?.displayAvatarURL?.();
+  const existing = embed.data?.footer?.text;
+  embed.setFooter({ text: existing ? `${existing} • Polymart` : 'Polymart', ...(icon ? { iconURL: icon } : {}) });
+  if (!embed.data?.timestamp) embed.setTimestamp();
+  return embed;
 }
 
-export function successEmbed(message) {
-  return new EmbedBuilder().setColor(GREEN).setDescription(`✅ ${message}`);
+export function errorEmbed(message, interaction) {
+  return polish(new EmbedBuilder().setColor(RED).setDescription(`❌ ${message}`), interaction);
+}
+
+export function successEmbed(message, interaction) {
+  return polish(new EmbedBuilder().setColor(GREEN).setDescription(`✅ ${message}`), interaction);
 }
 
 /**
@@ -109,11 +123,9 @@ export function successEmbed(message) {
  * Pass `interaction` to stamp the bot avatar into the footer icon.
  */
 export function brandEmbed({ title, color = BLUE, interaction } = {}) {
-  const embed = new EmbedBuilder().setColor(color).setTimestamp();
+  const embed = new EmbedBuilder().setColor(color);
   if (title) embed.setTitle(title);
-  const icon = interaction?.client?.user?.displayAvatarURL?.();
-  embed.setFooter({ text: 'Polymart', ...(icon ? { iconURL: icon } : {}) });
-  return embed;
+  return polish(embed, interaction);
 }
 
 export function requireSetup(config, interaction) {

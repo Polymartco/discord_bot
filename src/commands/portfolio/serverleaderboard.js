@@ -1,7 +1,7 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { stmt, getConfig } from '../../db.js';
 import { api } from '../../api.js';
-import { cash, sign, GOLD, errorEmbed, leaderboardCardAttachment } from '../../utils.js';
+import { cash, sign, GOLD, errorEmbed, leaderboardCardAttachment, polish } from '../../utils.js';
 import { assertGuildSetup, ValidationError } from '../../validate.js';
 
 const medal = i => i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `\`${String(i + 1).padStart(2)}\``;
@@ -66,6 +66,7 @@ export default {
       { title: metric === 'roi' ? 'Top Traders — Return %' : 'Top Traders — Cash' },
     );
     if (card) embed.setImage('attachment://leaderboard.png');
+    polish(embed, interaction);
 
     await interaction.editReply({ embeds: [embed], ...(card ? { files: [card] } : {}) });
   },

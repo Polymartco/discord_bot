@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { cash, GREEN, RED, GOLD, BLUE, errorEmbed } from '../../utils.js';
+import { cash, GREEN, RED, GOLD, BLUE, errorEmbed, polish } from '../../utils.js';
 import { ValidationError } from '../../validate.js';
 import { ensureUser, validateBet, adjust } from '../../casinoLib.js';
 import { recordGame, unlockField } from '../../casinoStats.js';
@@ -57,7 +57,7 @@ export default {
       return rows;
     };
 
-    const embed = ({ title, color, footer }) => new EmbedBuilder()
+    const embed = ({ title, color, footer }) => polish(new EmbedBuilder()
       .setTitle(title ?? '💣 Mines')
       .setColor(color ?? BLUE)
       .addFields(
@@ -67,7 +67,7 @@ export default {
         { name: 'Multiplier',  value: `x${mult.toFixed(2)}`,           inline: true },
         { name: 'Cash-out now', value: cash(Math.round(bet * mult)),   inline: true },
       )
-      .setFooter({ text: footer ?? 'Pick a tile, or cash out' });
+      .setFooter({ text: footer ?? 'Pick a tile, or cash out' }), interaction);
 
     const msg = await interaction.reply({ embeds: [embed({})], components: grid(), fetchReply: true });
     const collector = msg.createMessageComponentCollector({ time: 120_000 });

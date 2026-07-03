@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } from 'discord.js';
 import { api, ApiError } from '../../api.js';
-import { sign, BLUE, errorEmbed, sectorHeatmapBuffer } from '../../utils.js';
+import { sign, BLUE, errorEmbed, sectorHeatmapBuffer, polish } from '../../utils.js';
 import { registerPageSource, startPaginator } from '../../paginator.js';
 
 const PAGE_SIZE = 15;
@@ -21,7 +21,7 @@ const SORTERS = {
 
 // ── Restart-proof page source ─────────────────────────────────────────────────
 // args = [sector|'-', sortKey]. Re-fetches (cache-backed) and re-slices per page.
-registerPageSource('stocks', async (_interaction, { args, page }) => {
+registerPageSource('stocks', async (interaction, { args, page }) => {
   const sector = args[0] && args[0] !== '-' ? args[0] : null;
   const sortBy = args[1] ?? 'change';
 
@@ -56,7 +56,7 @@ registerPageSource('stocks', async (_interaction, { args, page }) => {
     if (buf) { embed.setImage('attachment://heatmap.png'); files.push(new AttachmentBuilder(buf, { name: 'heatmap.png' })); }
   }
 
-  return { embeds: [embed], files, totalPages };
+  return { embeds: [polish(embed, interaction)], files, totalPages };
 });
 
 export default {

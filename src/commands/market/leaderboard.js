@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { api } from '../../api.js';
-import { BLUE } from '../../utils.js';
+import { BLUE, polish } from '../../utils.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -43,6 +43,6 @@ export default {
         ).join('\n') || '—'
       );
 
-    await interaction.editReply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [polish(embed, interaction)] });
   },
 };

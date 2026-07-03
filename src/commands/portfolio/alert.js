@@ -2,7 +2,7 @@ import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { stmt, getConfig, getOrCreateUser } from '../../db.js';
 import { botApi } from '../../botApi.js';
 import { detectAssetType, getFreshPrice, ApiError } from '../../api.js';
-import { GOLD, errorEmbed, successEmbed, cash } from '../../utils.js';
+import { GOLD, errorEmbed, successEmbed, cash, polish } from '../../utils.js';
 import { ValidationError, validateTickerFormat, assertValidPrice } from '../../validate.js';
 import { respondTickerAutocomplete } from '../../autocomplete.js';
 
@@ -82,11 +82,11 @@ export default {
           });
 
           return interaction.editReply({
-            embeds: [new EmbedBuilder()
+            embeds: [polish(new EmbedBuilder()
               .setTitle('Your Price Alerts')
               .setColor(GOLD)
               .setDescription(lines.join('\n'))
-              .setFooter({ text: `${alerts.length}/${MAX_ALERTS_LINKED} slots · 🔗 polymart.co · Fires as DM` })],
+              .setFooter({ text: `${alerts.length}/${MAX_ALERTS_LINKED} slots · 🔗 polymart.co · Fires as DM` }), interaction)],
           });
         } catch (err) {
           if (err.message.includes('404') || err.message.includes('No Polymart account')) {
@@ -232,11 +232,11 @@ export default {
         `\`ID ${a.id}\` **${a.ticker}** (${a.asset_type}) — ${a.direction} ${cash(a.threshold)}`
       );
       return interaction.reply({
-        embeds: [new EmbedBuilder()
+        embeds: [polish(new EmbedBuilder()
           .setTitle('Your Price Alerts')
           .setColor(GOLD)
           .setDescription(lines.join('\n'))
-          .setFooter({ text: `${alerts.length}/${MAX_ALERTS_LOCAL} slots used · Fires in channel` })],
+          .setFooter({ text: `${alerts.length}/${MAX_ALERTS_LOCAL} slots used · Fires in channel` }), interaction)],
         ephemeral: true,
       });
     }

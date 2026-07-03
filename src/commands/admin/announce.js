@@ -1,7 +1,7 @@
 import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
 import { api, ApiError } from '../../api.js';
 import { getConfig } from '../../db.js';
-import { sign, colorOf, errorEmbed } from '../../utils.js';
+import { sign, colorOf, errorEmbed, polish } from '../../utils.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -42,8 +42,8 @@ export default {
         { name: 'VIX',            value: market?.vix?.toFixed(2) ?? '—',                                                inline: true },
         { name: '📈 Top Gainers', value: fmtMovers(gainers),                                                            inline: true },
         { name: '📉 Top Losers',  value: fmtMovers(losers),                                                             inline: true },
-      )
-      .setTimestamp();
+      );
+    polish(embed, interaction);
 
     try {
       const channel = await interaction.client.channels.fetch(config.announce_channel_id);

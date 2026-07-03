@@ -2,7 +2,7 @@ import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getOrCreateUser, getConfig, executeTrade, stmt } from '../../db.js';
 import { botApi } from '../../botApi.js';
 import { detectAssetType, getFreshPrice, getCachedEntry, pricePath, ApiError } from '../../api.js';
-import { cash, colorOf, sign, errorEmbed } from '../../utils.js';
+import { cash, colorOf, sign, errorEmbed, polish } from '../../utils.js';
 import { recordTrade, progressField } from '../../postTrade.js';
 import { respondTickerAutocomplete } from '../../autocomplete.js';
 import { tradeButtons } from '../../cards.js';
@@ -136,7 +136,7 @@ export default {
             )
             .setFooter({ text: `🔗 Executed via polymart.co${pnlStr} • ${new Date().toLocaleTimeString()}` });
 
-          return interaction.editReply({ embeds: [embed] });
+          return interaction.editReply({ embeds: [polish(embed, interaction)] });
         }
       }
     }
@@ -231,6 +231,7 @@ export default {
       guildId, userId: user.id, side: 'sell', total: shares * price, pnlPct, balance: result.newBalance,
     }));
     if (field) embed.addFields(field);
+    polish(embed, interaction);
 
     await interaction.editReply({
       embeds:     [embed],

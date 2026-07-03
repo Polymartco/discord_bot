@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { stmt } from '../../db.js';
-import { cash, GOLD } from '../../utils.js';
+import { cash, GOLD, polish } from '../../utils.js';
 
 const medal = i => ['🥇', '🥈', '🥉'][i] ?? `\`${String(i + 1).padStart(2)}\``;
 
@@ -22,7 +22,7 @@ export default {
     });
 
     await interaction.editReply({
-      embeds: [new EmbedBuilder().setTitle('🎰 Casino Leaderboard — Net Profit').setColor(GOLD).setDescription(lines.join('\n'))],
+      embeds: [polish(new EmbedBuilder().setTitle('🎰 Casino Leaderboard — Net Profit').setColor(GOLD).setDescription(lines.join('\n')), interaction)],
     });
   },
 };

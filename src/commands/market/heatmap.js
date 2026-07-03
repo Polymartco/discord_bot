@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { api, ApiError } from '../../api.js';
-import { sign, GREEN, RED, errorEmbed, sectorHeatmapAttachment } from '../../utils.js';
+import { sign, GREEN, RED, errorEmbed, sectorHeatmapAttachment, polish } from '../../utils.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -52,6 +52,6 @@ export default {
 
     if (att) embed.setImage('attachment://heatmap.png');
 
-    await interaction.editReply({ embeds: [embed], ...(att ? { files: [att] } : {}) });
+    await interaction.editReply({ embeds: [polish(embed, interaction)], ...(att ? { files: [att] } : {}) });
   },
 };

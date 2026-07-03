@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { api, ApiError } from '../../api.js';
-import { sign, colorOf, BLUE, errorEmbed } from '../../utils.js';
+import { sign, colorOf, BLUE, errorEmbed, polish } from '../../utils.js';
 import { validateTickerFormat, ValidationError } from '../../validate.js';
 import { respondTickerAutocomplete } from '../../autocomplete.js';
 
@@ -50,6 +50,6 @@ export default {
       embed.addFields({ name: 'Headlines', value: headlines.map(h => `• ${h}`).join('\n'), inline: false });
     }
 
-    await interaction.editReply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [polish(embed, interaction)] });
   },
 };

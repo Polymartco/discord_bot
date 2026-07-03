@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
 import { stmt } from '../../db.js';
-import { GOLD } from '../../utils.js';
+import { GOLD, polish } from '../../utils.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -28,6 +28,6 @@ export default {
       )
       .setDescription('Users can now use `/balance`, `/buy`, `/sell`, and all portfolio commands.\nRun `/config` to update settings or set channel overrides.');
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ embeds: [polish(embed, interaction)] });
   },
 };

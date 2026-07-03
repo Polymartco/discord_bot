@@ -2,7 +2,7 @@ import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getOrCreateUser, stmt, getConfig } from '../../db.js';
 import { botApi } from '../../botApi.js';
 import { api } from '../../api.js';
-import { cash, colorOf, GOLD, errorEmbed } from '../../utils.js';
+import { cash, colorOf, GOLD, errorEmbed, polish } from '../../utils.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -60,7 +60,7 @@ export default {
           )
           .setFooter({ text: '🔗 Unrealised from polymart.co • Realised from Discord trades only' });
 
-        return interaction.editReply({ embeds: [embed] });
+        return interaction.editReply({ embeds: [polish(embed, interaction)] });
       } catch (err) {
         if (err.message.includes('404') || err.message.includes('No Polymart account')) {
           stmt.deleteLink.run(user.id); // stale — fall through
@@ -149,6 +149,7 @@ export default {
     if (staleCount > 0) {
       embed.setFooter({ text: `⚠️ ${staleCount} position(s) using cost basis — live price unavailable` });
     }
+    polish(embed, interaction);
 
     await interaction.editReply({ embeds: [embed] });
   },

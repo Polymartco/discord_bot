@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ChannelType } from 'discord.js';
 import { stmt, getConfig, updateChannelConfig } from '../../db.js';
-import { GOLD, successEmbed, errorEmbed } from '../../utils.js';
+import { GOLD, successEmbed, errorEmbed, polish } from '../../utils.js';
 
 // ── Bounds for config values ──────────────────────────────────────────────────
 const BOUNDS = {
@@ -64,7 +64,7 @@ export default {
           { name: 'Announce Channel', value: cfg.announce_channel_id ? `<#${cfg.announce_channel_id}>` : '—', inline: true },
           { name: 'Set up by',        value: cfg.setup_by ? `<@${cfg.setup_by}>` : '—', inline: true },
         );
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.reply({ embeds: [polish(embed, interaction)], ephemeral: true });
     }
 
     // ── set ───────────────────────────────────────────────────────────────────

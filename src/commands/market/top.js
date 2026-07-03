@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { api, ApiError } from '../../api.js';
-import { sign, BLUE, errorEmbed } from '../../utils.js';
+import { sign, BLUE, errorEmbed, polish } from '../../utils.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -34,6 +34,6 @@ export default {
         { name: '📉 Losers',  value: fmt(losers)  || '—', inline: true },
       );
 
-    await interaction.editReply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [polish(embed, interaction)] });
   },
 };

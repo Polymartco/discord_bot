@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
-import { cash, GREEN, RED, errorEmbed } from '../../utils.js';
+import { cash, GREEN, RED, errorEmbed, polish } from '../../utils.js';
 import { ValidationError } from '../../validate.js';
 import { ensureUser, validateBet, adjust } from '../../casinoLib.js';
 import { recordGame, unlockField } from '../../casinoStats.js';
@@ -42,6 +42,7 @@ export default {
         { name: 'Balance', value: cash(bal), inline: true },
       );
     const f = unlockField(unlocked); if (f) embed.addFields(f);
+    polish(embed, interaction);
 
     await interaction.reply({ embeds: [embed] });
   },

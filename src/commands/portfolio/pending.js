@@ -1,7 +1,7 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { stmt } from '../../db.js';
 import { botApi } from '../../botApi.js';
-import { cash, BLUE, errorEmbed, successEmbed } from '../../utils.js';
+import { cash, BLUE, errorEmbed, successEmbed, polish } from '../../utils.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -62,7 +62,7 @@ export default {
         .setDescription(lines.join('\n'))
         .setFooter({ text: `${orders.length} pending order${orders.length === 1 ? '' : 's'} · 🔗 polymart.co` });
 
-      return interaction.editReply({ embeds: [embed] });
+      return interaction.editReply({ embeds: [polish(embed, interaction)] });
     }
 
     // ── cancel ────────────────────────────────────────────────────────────────

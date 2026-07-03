@@ -2,7 +2,7 @@ import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getOrCreateUser, stmt, getConfig } from '../../db.js';
 import { botApi } from '../../botApi.js';
 import { api, ApiError } from '../../api.js';
-import { cash, colorOf, GOLD, BLUE, errorEmbed } from '../../utils.js';
+import { cash, colorOf, GOLD, BLUE, errorEmbed, polish } from '../../utils.js';
 import { rankTitle, levelFromXp } from '../../progression.js';
 
 export default {
@@ -40,7 +40,7 @@ export default {
           )
           .setFooter({ text: '🔗 Synced from polymart.co' });
 
-        return interaction.editReply({ embeds: [embed] });
+        return interaction.editReply({ embeds: [polish(embed, interaction)] });
       } catch (err) {
         if (err.message.includes('404') || err.message.includes('No Polymart account')) {
           stmt.deleteLink.run(user.id); // stale — fall through
@@ -101,6 +101,7 @@ export default {
     if (staleCount > 0) {
       embed.setFooter({ text: `⚠️ ${staleCount} holding(s) using cost basis — live price unavailable` });
     }
+    polish(embed, interaction);
 
     await interaction.editReply({ embeds: [embed] });
   },

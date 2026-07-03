@@ -2,7 +2,7 @@ import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getOrCreateUser, stmt, getConfig } from '../../db.js';
 import { botApi } from '../../botApi.js';
 import { api } from '../../api.js';
-import { cash, sign, priceFmt, BLUE, errorEmbed, portfolioDonutAttachment } from '../../utils.js';
+import { cash, sign, priceFmt, BLUE, errorEmbed, portfolioDonutAttachment, polish } from '../../utils.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -46,7 +46,7 @@ export default {
           .addFields(fields)
           .setFooter({ text: '🔗 Synced from polymart.co' });
 
-        return interaction.editReply({ embeds: [embed] });
+        return interaction.editReply({ embeds: [polish(embed, interaction)] });
       } catch (err) {
         if (err.message.includes('404') || err.message.includes('No Polymart account')) {
           stmt.deleteLink.run(user.id); // stale link — fall through to local SQLite
@@ -112,6 +112,7 @@ export default {
     // Allocation donut (degrades to no image if canvas is unavailable).
     const donut = portfolioDonutAttachment(slices, { title: `${user.username}'s Allocation` });
     if (donut) embed.setImage('attachment://allocation.png');
+    polish(embed, interaction);
 
     await interaction.editReply({ embeds: [embed], ...(donut ? { files: [donut] } : {}) });
   },

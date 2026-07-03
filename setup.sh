@@ -2,18 +2,28 @@
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
-ok()   { echo "  [ok]  $*"; }
-info() { echo "  [..]  $*"; }
-warn() { echo "  [!!]  $*"; }
-die()  { echo; echo "  [FAIL] $*" >&2; exit 1; }
-step() { echo; echo "--- $* ---"; }
+TOTAL_STEPS=8
+STEP_NUM=0
+
+if [[ -t 1 ]] && [[ -z "${NO_COLOR:-}" ]]; then
+  C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'
+  C_GREEN=$'\033[32m'; C_YELLOW=$'\033[33m'; C_RED=$'\033[31m'; C_CYAN=$'\033[36m'
+else
+  C_RESET=''; C_BOLD=''; C_GREEN=''; C_YELLOW=''; C_RED=''; C_CYAN=''
+fi
+
+ok()   { echo "  ${C_GREEN}✔${C_RESET}  $*"; }
+info() { echo "  ${C_CYAN}…${C_RESET}  $*"; }
+warn() { echo "  ${C_YELLOW}⚠${C_RESET}  $*"; }
+die()  { echo; echo "  ${C_RED}✖  $*${C_RESET}" >&2; exit 1; }
+step() { STEP_NUM=$((STEP_NUM + 1)); echo; echo "${C_BOLD}${C_CYAN}--- [$STEP_NUM/$TOTAL_STEPS] $* ---${C_RESET}"; }
 
 [[ $EUID -eq 0 ]] && die "Run as a normal user with sudo, not root."
 
 echo
-echo "================================="
-echo "     Polymart Bot  -  Setup      "
-echo "================================="
+echo "${C_BOLD}=================================${C_RESET}"
+echo "${C_BOLD}     Polymart Bot  -  Setup      ${C_RESET}"
+echo "${C_BOLD}=================================${C_RESET}"
 
 # ── 1. Clear apt locks ────────────────────────────────────────────────────────
 step "Clearing apt locks"
@@ -58,7 +68,7 @@ ok "Slash commands registered"
 
 # ── 7. PM2 ───────────────────────────────────────────────────────────────────
 step "Starting bot with PM2"
-command -v pm2 &>/dev/null || npm install -g pm2
+command -v pm2 &>/dev/null || bun install -g pm2
 mkdir -p logs
 pm2 delete polymart-bot 2>/dev/null || true
 pm2 start ecosystem.config.cjs
@@ -67,8 +77,9 @@ ok "Bot is running"
 
 # ── 8. Auto-start on reboot ───────────────────────────────────────────────────
 step "Systemd auto-start"
-STARTUP=$(pm2 startup systemd 2>&1 | grep -o "sudo env PATH.*" | head -1)
+STARTUP=$(pm2 startup systemd 2>&1 | grep -o "sudo env PATH.*" | head -1 || true)
 if [[ -n "$STARTUP" ]]; then
+  info "Running: $STARTUP"
   eval "$STARTUP"
   pm2 save --force
   ok "Auto-start configured"
@@ -77,9 +88,9 @@ else
 fi
 
 echo
-echo "================================="
-echo "   Done - bot is live"
-echo "================================="
+echo "${C_GREEN}${C_BOLD}=================================${C_RESET}"
+echo "${C_GREEN}${C_BOLD}      ✔ Done - bot is live${C_RESET}"
+echo "${C_GREEN}${C_BOLD}=================================${C_RESET}"
 echo
 echo "  pm2 logs polymart-bot    - live logs"
 echo "  pm2 restart polymart-bot - restart"

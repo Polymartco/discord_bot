@@ -1,7 +1,7 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { stmt } from '../../db.js';
 import { botApi } from '../../botApi.js';
-import { GOLD, errorEmbed, cash } from '../../utils.js';
+import { GOLD, errorEmbed, cash, polish } from '../../utils.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -66,6 +66,7 @@ export default {
           inline: true,
         },
       );
+    polish(embed, interaction);
 
     await interaction.editReply({ embeds: [embed] });
   },

@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { api, ApiError } from '../../api.js';
-import { sign, colorOf, errorEmbed } from '../../utils.js';
+import { sign, colorOf, errorEmbed, polish } from '../../utils.js';
 
 const SECTORS = ['tech','ai','crypto','bio','green','finance','gaming','health','defence',
   'retail','media','auto','realty','travel','energy','logistics','agri','food','space','meme'];
@@ -55,6 +55,6 @@ export default {
       });
     }
 
-    await interaction.editReply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [polish(embed, interaction)] });
   },
 };

@@ -2,7 +2,7 @@ import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { stmt, getConfig, getOrCreateUser } from '../../db.js';
 import { botApi } from '../../botApi.js';
 import { api, detectAssetType } from '../../api.js';
-import { BLUE, errorEmbed, successEmbed } from '../../utils.js';
+import { BLUE, errorEmbed, successEmbed, polish } from '../../utils.js';
 import { ValidationError, validateTickerFormat, assertAssetExists } from '../../validate.js';
 import { respondTickerAutocomplete } from '../../autocomplete.js';
 
@@ -77,11 +77,11 @@ export default {
           });
 
           return interaction.editReply({
-            embeds: [new EmbedBuilder()
+            embeds: [polish(new EmbedBuilder()
               .setTitle(`${user.username}'s Watchlist`)
               .setColor(BLUE)
               .setDescription(lines.join('\n'))
-              .setFooter({ text: `${items.length} items · 🔗 polymart.co` })],
+              .setFooter({ text: `${items.length} items · 🔗 polymart.co` }), interaction)],
           });
         } catch (err) {
           if (err.message.includes('404') || err.message.includes('No Polymart account')) {
@@ -174,11 +174,11 @@ export default {
       });
 
       return interaction.reply({
-        embeds: [new EmbedBuilder()
+        embeds: [polish(new EmbedBuilder()
           .setTitle(`${user.username}'s Watchlist`)
           .setColor(BLUE)
           .setDescription(lines.join('\n'))
-          .setFooter({ text: `${list.length}/${MAX_WATCHLIST} slots used` })],
+          .setFooter({ text: `${list.length}/${MAX_WATCHLIST} slots used` }), interaction)],
         ephemeral: true,
       });
     }

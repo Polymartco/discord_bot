@@ -1,7 +1,7 @@
 import { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder } from 'discord.js';
 import { registerComponent, buildId } from './interactionRouter.js';
 import { buildStockCard, tradeButtons } from './cards.js';
-import { errorEmbed, cash, sign, colorOf, GREEN } from './utils.js';
+import { errorEmbed, cash, sign, colorOf, GREEN, polish } from './utils.js';
 import { getOrCreateUser, getConfig, executeTrade, stmt } from './db.js';
 import { getFreshPrice, ApiError } from './api.js';
 import {
@@ -117,5 +117,5 @@ async function executeLocalTrade(interaction, side, rawTicker, type, rawShares) 
   }));
   if (field) embed.addFields(field);
 
-  return embed;
+  return polish(embed, interaction);
 }

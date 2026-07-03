@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { stmt } from '../../db.js';
-import { cash, GREEN, RED, GOLD, BLUE, errorEmbed } from '../../utils.js';
+import { cash, GREEN, RED, GOLD, BLUE, errorEmbed, polish } from '../../utils.js';
 import { ValidationError } from '../../validate.js';
 import { ensureUser, validateBet, adjust, makeDeck, handValue, handStr, isBlackjack } from '../../casinoLib.js';
 import { recordGame, unlockField } from '../../casinoStats.js';
@@ -51,7 +51,7 @@ export default {
       const dealerVal   = hideHole ? `${handValue([dealer[0]])}+` : handValue(dealer);
       e.addFields({ name: `Dealer (${dealerVal})`, value: dealerCards || '—', inline: false });
       e.setFooter({ text: footer ?? `Bet: ${cash(totalBet())} • Your move` });
-      return e;
+      return polish(e, interaction);
     };
 
     const buttons = (disabled = false) => {

@@ -2,7 +2,7 @@ import { EmbedBuilder } from 'discord.js';
 import { stmt } from './db.js';
 import { api } from './api.js';
 import { botApi } from './botApi.js';
-import { colorOf, cash } from './utils.js';
+import { colorOf, cash, polish } from './utils.js';
 
 // ── Back-off state ────────────────────────────────────────────────────────────
 const failState = { consecutiveErrors: 0, backoffUntil: 0 };
@@ -141,11 +141,10 @@ function buildAlertEmbed(ticker, direction, threshold, currentPrice, note) {
   ];
   if (note) fields.push({ name: 'Note', value: note, inline: false });
 
-  return new EmbedBuilder()
+  return polish(new EmbedBuilder()
     .setTitle('🔔 Price Alert Triggered')
     .setColor(colorOf(direction === 'above' ? 1 : -1))
-    .addFields(fields)
-    .setTimestamp();
+    .addFields(fields));
 }
 
 function onApiSuccess() { failState.consecutiveErrors = 0; }

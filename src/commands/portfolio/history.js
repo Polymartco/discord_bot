@@ -1,7 +1,7 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getOrCreateUser, stmt, getConfig } from '../../db.js';
 import { botApi } from '../../botApi.js';
-import { cash, BLUE, errorEmbed } from '../../utils.js';
+import { cash, BLUE, errorEmbed, polish } from '../../utils.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -42,7 +42,7 @@ export default {
           .setDescription(lines.join('\n'))
           .setFooter({ text: '🔗 Synced from polymart.co' });
 
-        return interaction.editReply({ embeds: [embed] });
+        return interaction.editReply({ embeds: [polish(embed, interaction)] });
       } catch (err) {
         if (err.message.includes('404') || err.message.includes('No Polymart account')) {
           stmt.deleteLink.run(user.id);
@@ -68,7 +68,7 @@ export default {
     });
 
     await interaction.editReply({
-      embeds: [new EmbedBuilder().setTitle(`Trade History — Page ${page}`).setColor(BLUE).setDescription(lines.join('\n'))],
+      embeds: [polish(new EmbedBuilder().setTitle(`Trade History — Page ${page}`).setColor(BLUE).setDescription(lines.join('\n')), interaction)],
     });
   },
 };

@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { api } from '../../api.js';
-import { sign, colorOf, BLUE } from '../../utils.js';
+import { sign, colorOf, BLUE, polish } from '../../utils.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -31,6 +31,6 @@ export default {
         { name: 'Down Streak',     value: String(m.downStreak ?? '—'),                            inline: true },
       );
 
-    await interaction.editReply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [polish(embed, interaction)] });
   },
 };

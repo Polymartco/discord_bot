@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { api } from '../../api.js';
-import { BLUE } from '../../utils.js';
+import { BLUE, polish } from '../../utils.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -27,6 +27,6 @@ export default {
       .setColor(BLUE)
       .setDescription(lines.join('\n') || 'No recent events.');
 
-    await interaction.editReply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [polish(embed, interaction)] });
   },
 };

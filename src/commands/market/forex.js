@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { api, ApiError } from '../../api.js';
-import { chartAttachment, sign, colorOf, priceFmt, errorEmbed } from '../../utils.js';
+import { chartAttachment, sign, colorOf, priceFmt, errorEmbed, polish } from '../../utils.js';
 import { validateTickerFormat, ValidationError } from '../../validate.js';
 import { respondTickerAutocomplete } from '../../autocomplete.js';
 
@@ -54,6 +54,6 @@ export default {
       );
 
     if (att) embed.setImage('attachment://chart.png');
-    await interaction.editReply({ embeds: [embed], ...(att ? { files: [att] } : {}) });
+    await interaction.editReply({ embeds: [polish(embed, interaction)], ...(att ? { files: [att] } : {}) });
   },
 };

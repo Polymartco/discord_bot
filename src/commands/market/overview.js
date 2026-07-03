@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { api, ApiError } from '../../api.js';
-import { sign, BLUE, errorEmbed, marketOverviewAttachment } from '../../utils.js';
+import { sign, BLUE, errorEmbed, marketOverviewAttachment, polish } from '../../utils.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -51,6 +51,6 @@ export default {
 
     if (att) embed.setImage('attachment://overview.png');
 
-    await interaction.editReply({ embeds: [embed], ...(att ? { files: [att] } : {}) });
+    await interaction.editReply({ embeds: [polish(embed, interaction)], ...(att ? { files: [att] } : {}) });
   },
 };
