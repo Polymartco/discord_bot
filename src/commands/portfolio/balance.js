@@ -4,6 +4,7 @@ import { botApi } from '../../botApi.js';
 import { api, ApiError } from '../../api.js';
 import { cash, colorOf, GOLD, BLUE, errorEmbed, polish } from '../../utils.js';
 import { rankTitle, levelFromXp } from '../../progression.js';
+import { dailyViewXp, progressField } from '../../postTrade.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -101,6 +102,10 @@ export default {
     if (staleCount > 0) {
       embed.setFooter({ text: `⚠️ ${staleCount} holding(s) using cost basis — live price unavailable` });
     }
+
+    // Small once-a-day XP for checking in (period-guarded — never a faucet).
+    const view = dailyViewXp(guildId, user.id);
+    if (view) { const vf = progressField(view); if (vf) embed.addFields(vf); }
     polish(embed, interaction);
 
     await interaction.editReply({ embeds: [embed] });

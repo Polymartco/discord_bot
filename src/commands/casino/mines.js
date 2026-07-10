@@ -2,7 +2,7 @@ import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, But
 import { cash, GREEN, RED, GOLD, BLUE, errorEmbed, polish } from '../../utils.js';
 import { ValidationError } from '../../validate.js';
 import { ensureUser, validateBet, adjust } from '../../casinoLib.js';
-import { recordGame, unlockField } from '../../casinoStats.js';
+import { recordGame, casinoProgressField } from '../../casinoStats.js';
 
 const TILES = 20;            // 5 columns × 4 rows
 const HOUSE = 0.97;          // payout edge
@@ -17,7 +17,8 @@ export default {
 
   async execute(interaction) {
     const { guildId, user } = interaction;
-    const mineCount = interaction.options.getInteger('mines') ?? 3;
+    // Default to 3 and clamp defensively so a missing/odd option can never break the game.
+    const mineCount = Math.min(10, Math.max(1, interaction.options.getInteger('mines') ?? 3));
 
     let bet;
     try {
@@ -69,18 +70,20 @@ export default {
       )
       .setFooter({ text: footer ?? 'Pick a tile, or cash out' }), interaction);
 
-    const msg = await interaction.reply({ embeds: [embed({})], components: grid(), fetchReply: true });
+    await interaction.reply({ embeds: [embed({})], components: grid() });
+    const msg = await interaction.fetchReply();
     const collector = msg.createMessageComponentCollector({ time: 120_000 });
 
     const cashOut = async (apply) => {
       if (finished) return;
       finished = true; collector.stop();
       const winnings = Math.round(bet * mult);
-      const bal = adjust(guildId, user.id, winnings);
+      adjust(guildId, user.id, winnings);
       const net = winnings - bet;
-      const unlocked = recordGame({ guildId, userId: user.id, bet, net, flags: { minesSafe: revealed.size } });
+      const settle = recordGame({ guildId, userId: user.id, bet, net, game: 'mines', flags: { minesSafe: revealed.size } });
+      const bal = ensureUser(guildId, user.id).balance; // include any level-up bonus
       const e = embed({ title: '💎 Cashed Out!', color: GREEN, footer: `Won ${cash(net)} • Balance ${cash(bal)}` });
-      const f = unlockField(unlocked); if (f) e.addFields(f);
+      const f = casinoProgressField(settle); if (f) e.addFields(f);
       await apply({ embeds: [e], components: grid(true, true) });
     };
 
@@ -88,7 +91,7 @@ export default {
       if (finished) return;
       finished = true; collector.stop();
       const bal = ensureUser(guildId, user.id).balance;
-      recordGame({ guildId, userId: user.id, bet, net: -bet });
+      recordGame({ guildId, userId: user.id, bet, net: -bet, game: 'mines' });
       await i.update({ embeds: [embed({ title: '💥 BOOM — you hit a mine!', color: RED, footer: `Lost ${cash(bet)} • Balance ${cash(bal)}` })], components: grid(true, true) });
     };
 
@@ -114,7 +117,7 @@ export default {
     collector.on('end', async (_c, reason) => {
       if (reason === 'time' && !finished) {
         if (revealed.size > 0) await cashOut(p => interaction.editReply(p).catch(() => {}));
-        else { adjust(guildId, user.id, bet); recordGame({ guildId, userId: user.id, bet, net: 0 }); await interaction.editReply({ components: grid(true) }).catch(() => {}); }
+        else { adjust(guildId, user.id, bet); recordGame({ guildId, userId: user.id, bet, net: 0, game: 'mines' }); await interaction.editReply({ components: grid(true) }).catch(() => {}); }
       }
     });
   },

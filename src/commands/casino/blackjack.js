@@ -3,7 +3,7 @@ import { stmt } from '../../db.js';
 import { cash, GREEN, RED, GOLD, BLUE, errorEmbed, polish } from '../../utils.js';
 import { ValidationError } from '../../validate.js';
 import { ensureUser, validateBet, adjust, makeDeck, handValue, handStr, isBlackjack } from '../../casinoLib.js';
-import { recordGame, unlockField } from '../../casinoStats.js';
+import { recordGame, casinoProgressField } from '../../casinoStats.js';
 
 const TEN = new Set(['10', 'J', 'Q', 'K']);
 const splittable = (a, b) => a.r === b.r || (TEN.has(a.r) && TEN.has(b.r));
@@ -73,19 +73,22 @@ export default {
     // ── Natural blackjack (single hand only) ──────────────────────────────────
     if (isBlackjack(hands[0].cards)) {
       if (isBlackjack(dealer)) {
-        const bal = adjust(guildId, user.id, bet); // push
-        recordGame({ guildId, userId: user.id, bet, net: 0 });
+        adjust(guildId, user.id, bet); // push
+        recordGame({ guildId, userId: user.id, bet, net: 0, game: 'blackjack' });
+        const bal = getBal();
         return interaction.reply({ embeds: [render({ hideHole: false, title: '🃏 Push — both blackjack', color: GOLD, footer: `Bet returned • Balance ${cash(bal)}` })] });
       }
       const winnings = Math.round(bet * 2.5);
-      const bal = adjust(guildId, user.id, winnings);
-      const unlocked = recordGame({ guildId, userId: user.id, bet, net: winnings - bet, flags: { blackjackNatural: true } });
+      adjust(guildId, user.id, winnings);
+      const settle = recordGame({ guildId, userId: user.id, bet, net: winnings - bet, game: 'blackjack', flags: { blackjackNatural: true } });
+      const bal = getBal(); // include any level-up bonus
       const embed = render({ hideHole: false, title: '🃏 Blackjack! Pays 3:2', color: GREEN, footer: `Won ${cash(winnings - bet)} • Balance ${cash(bal)}` });
-      const f = unlockField(unlocked); if (f) embed.addFields(f);
+      const f = casinoProgressField(settle); if (f) embed.addFields(f);
       return interaction.reply({ embeds: [embed] });
     }
 
-    const msg = await interaction.reply({ embeds: [render({ hideHole: true })], components: [buttons()], fetchReply: true });
+    await interaction.reply({ embeds: [render({ hideHole: true })], components: [buttons()] });
+    const msg = await interaction.fetchReply();
     const collector = msg.createMessageComponentCollector({ time: 120_000 });
 
     const advance = () => {
@@ -110,9 +113,10 @@ export default {
       }
 
       const stake = totalBet();
-      const bal   = credit > 0 ? adjust(guildId, user.id, credit) : getBal();
+      if (credit > 0) adjust(guildId, user.id, credit);
       const net   = credit - stake;
-      const unlocked = recordGame({ guildId, userId: user.id, bet: stake, net });
+      const settle = recordGame({ guildId, userId: user.id, bet: stake, net, game: 'blackjack' });
+      const bal   = getBal(); // include any level-up bonus
 
       const title  = net > 0 ? '🃏 Blackjack — You win!' : net < 0 ? '🃏 Blackjack — You lose' : '🃏 Blackjack — Push';
       const color  = net > 0 ? GREEN : net < 0 ? RED : GOLD;
@@ -120,7 +124,7 @@ export default {
                    : net < 0 ? `Lost ${cash(-net)} • Balance ${cash(bal)}`
                    :           `Bet returned • Balance ${cash(bal)}`;
       const embed  = render({ hideHole: false, title, color, footer });
-      const f = unlockField(unlocked); if (f) embed.addFields(f);
+      const f = casinoProgressField(settle); if (f) embed.addFields(f);
       await apply({ embeds: [embed], components: [buttons(true)] });
     };
 

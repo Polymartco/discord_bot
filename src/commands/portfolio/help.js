@@ -6,29 +6,29 @@ import { brandEmbed, BLUE } from '../../utils.js';
 const CATEGORIES = [
   {
     key: 'market', emoji: '📈', label: 'Market',
-    blurb: 'Live prices, charts, and market data.',
+    blurb: 'Live prices, charts, market data — and predict where they go.',
     commands: ['market', 'overview', 'top', 'stock', 'stocks', 'crypto', 'cryptomarket',
                'forex', 'sector', 'heatmap', 'leaderboard', 'screener', 'compare',
-               'search', 'info', 'news', 'macro'],
+               'search', 'info', 'news', 'macro', 'predict'],
   },
   {
     key: 'portfolio', emoji: '💼', label: 'Portfolio',
-    blurb: 'Trade, track positions, and manage your account.',
+    blurb: 'Trade, track positions, and level up your account.',
     commands: ['balance', 'portfolio', 'buy', 'sell', 'profit', 'history', 'stats',
-               'watchlist', 'alert', 'pending', 'daily', 'achievements', 'profile',
-               'link', 'unlink'],
+               'watchlist', 'alert', 'pending', 'daily', 'streakfreeze', 'remindme',
+               'level', 'achievements', 'profile', 'link', 'unlink'],
   },
   {
     key: 'casino', emoji: '🎰', label: 'Casino',
-    blurb: 'Games of chance — bet your balance for a payout.',
-    commands: ['blackjack', 'roulette', 'slots', 'mines', 'coinflip', 'work', 'beg',
-               'casinostats', 'casinotop'],
+    blurb: 'Games of chance, duels, quests, and free crates.',
+    commands: ['blackjack', 'roulette', 'slots', 'mines', 'coinflip', 'challenge',
+               'quests', 'crate', 'work', 'beg', 'casinostats', 'casinotop'],
   },
   {
     key: 'admin', emoji: '🛠️', label: 'Admin',
     blurb: 'Server configuration. Requires the Manage Server permission.',
     commands: ['setup', 'config', 'setchannel', 'give', 'take', 'resetuser',
-               'season', 'announce'],
+               'season', 'announce', 'happyhour'],
   },
 ];
 

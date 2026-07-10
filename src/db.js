@@ -120,6 +120,59 @@ db.exec(`
     pool     REAL NOT NULL DEFAULT 0
   );
 
+  -- Rotating quest progress (per guild, per user, per period). scope='daily'|'weekly',
+  -- period_key is a UTC day (YYYY-MM-DD) or ISO week (YYYY-Www). claimed is the
+  -- one-time payout guard.
+  CREATE TABLE IF NOT EXISTS quest_progress (
+    guild_id   TEXT    NOT NULL,
+    user_id    TEXT    NOT NULL,
+    scope      TEXT    NOT NULL,
+    period_key TEXT    NOT NULL,
+    code       TEXT    NOT NULL,
+    progress   REAL    NOT NULL DEFAULT 0,
+    claimed    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (guild_id, user_id, scope, period_key, code)
+  );
+
+  -- Market predictions (directional bets on a live asset, auto-settled by the poller).
+  CREATE TABLE IF NOT EXISTS predictions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id    TEXT    NOT NULL,
+    user_id     TEXT    NOT NULL,
+    channel_id  TEXT,
+    ticker      TEXT    NOT NULL,
+    asset_type  TEXT    NOT NULL DEFAULT 'stock',
+    direction   TEXT    NOT NULL,          -- 'up' | 'down'
+    stake       REAL    NOT NULL,
+    entry_price REAL    NOT NULL,
+    settle_at   INTEGER NOT NULL,
+    settled     INTEGER NOT NULL DEFAULT 0,
+    created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+  );
+
+  -- Head-to-head challenge duels (zero-sum PvP). status: pending|accepted|declined|cancelled|done.
+  CREATE TABLE IF NOT EXISTS challenges (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id      TEXT    NOT NULL,
+    channel_id    TEXT,
+    challenger_id TEXT    NOT NULL,
+    opponent_id   TEXT    NOT NULL,
+    bet           REAL    NOT NULL,
+    game          TEXT    NOT NULL DEFAULT 'highcard',
+    status        TEXT    NOT NULL DEFAULT 'pending',
+    winner_id     TEXT,
+    expires_at    INTEGER NOT NULL,
+    created_at    INTEGER NOT NULL DEFAULT (unixepoch())
+  );
+
+  -- Restart-safe once-per-period ledger for scheduled jobs (reminders, digests, happy-hour).
+  CREATE TABLE IF NOT EXISTS bot_state (
+    guild_id   TEXT NOT NULL,
+    key        TEXT NOT NULL,
+    period_key TEXT NOT NULL,
+    PRIMARY KEY (guild_id, key)
+  );
+
   -- Final standings snapshot when a season is reset
   CREATE TABLE IF NOT EXISTS season_winners (
     guild_id  TEXT    NOT NULL,
@@ -151,7 +204,13 @@ addColumnIfMissing('users', 'xp',           'xp INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('users', 'level',        'level INTEGER NOT NULL DEFAULT 1');
 addColumnIfMissing('users', 'last_beg',     'last_beg INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('users', 'last_work',    'last_work INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('users', 'streak_freezes', 'streak_freezes INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('users', 'last_crate',   'last_crate INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('users', 'dm_reminders', 'dm_reminders INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('users', 'last_reminded', 'last_reminded TEXT');
+addColumnIfMissing('users', 'last_view_xp', 'last_view_xp TEXT');
 addColumnIfMissing('guild_config', 'season_no', 'season_no INTEGER NOT NULL DEFAULT 1');
+addColumnIfMissing('guild_config', 'happy_hour_until', 'happy_hour_until INTEGER NOT NULL DEFAULT 0');
 
 // Self-heal legacy guild_config tables created before these columns existed.
 // Without these, /setup, /config, and /setchannel throw "no such column" on old DBs.
@@ -249,6 +308,71 @@ export const stmt = {
   getJackpot: db.prepare('SELECT pool FROM casino_jackpot WHERE guild_id = ?'),
   addJackpot: db.prepare('INSERT INTO casino_jackpot (guild_id, pool) VALUES (?, ?) ON CONFLICT(guild_id) DO UPDATE SET pool = pool + excluded.pool'),
   setJackpot: db.prepare('INSERT INTO casino_jackpot (guild_id, pool) VALUES (?, ?) ON CONFLICT(guild_id) DO UPDATE SET pool = excluded.pool'),
+
+  // Quests
+  getQuestRow: db.prepare('SELECT progress, claimed FROM quest_progress WHERE guild_id = ? AND user_id = ? AND scope = ? AND period_key = ? AND code = ?'),
+  upsertQuestProgress: db.prepare(`
+    INSERT INTO quest_progress (guild_id, user_id, scope, period_key, code, progress)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(guild_id, user_id, scope, period_key, code) DO UPDATE SET progress = excluded.progress
+  `),
+  // Atomic one-time claim: only flips claimed 0→1 when the quest is genuinely
+  // complete and unclaimed, so concurrent double-taps can never double-pay.
+  claimQuest: db.prepare(`
+    UPDATE quest_progress SET claimed = 1
+    WHERE guild_id = ? AND user_id = ? AND scope = ? AND period_key = ? AND code = ?
+      AND claimed = 0 AND progress >= ?
+  `),
+
+  // Guild fan-out (for scheduled jobs — reminders, digests, auto season-end).
+  getAllConfigs: db.prepare('SELECT * FROM guild_config'),
+  setHappyHourUntil: db.prepare('UPDATE guild_config SET happy_hour_until = ? WHERE guild_id = ?'),
+  // Reminder candidates across all guilds (filtered by elapsed window in JS).
+  reminderCandidates: db.prepare('SELECT guild_id, user_id, daily_streak, last_daily, last_reminded FROM users WHERE dm_reminders = 1 AND daily_streak > 0 AND last_daily > 0'),
+
+  // Predictions
+  insertPrediction:  db.prepare(`
+    INSERT INTO predictions (guild_id, user_id, channel_id, ticker, asset_type, direction, stake, entry_price, settle_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `),
+  getDuePredictions: db.prepare('SELECT * FROM predictions WHERE settled = 0 AND settle_at <= ? ORDER BY settle_at ASC LIMIT 100'),
+  countActivePredictions: db.prepare('SELECT COUNT(*) AS cnt FROM predictions WHERE guild_id = ? AND user_id = ? AND settled = 0'),
+  // Atomic settle guard — flips settled 0→1 for exactly one caller (crash/restart safe).
+  settlePrediction:  db.prepare('UPDATE predictions SET settled = 1 WHERE id = ? AND settled = 0'),
+
+  // Challenges (PvP duels)
+  insertChallenge:   db.prepare(`
+    INSERT INTO challenges (guild_id, channel_id, challenger_id, opponent_id, bet, game, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `),
+  getChallenge:      db.prepare('SELECT * FROM challenges WHERE id = ?'),
+  getExpiredChallenges: db.prepare("SELECT * FROM challenges WHERE status = 'pending' AND expires_at <= ?"),
+  // Atomic status transitions — pay/refund only when exactly one row changes.
+  acceptChallenge:   db.prepare("UPDATE challenges SET status = 'accepted' WHERE id = ? AND status = 'pending'"),
+  finishChallenge:   db.prepare("UPDATE challenges SET status = 'done', winner_id = ? WHERE id = ? AND status = 'accepted'"),
+  cancelChallenge:   db.prepare("UPDATE challenges SET status = ? WHERE id = ? AND status = 'pending'"),
+
+  // Generic atomic guarded debit — subtracts only when the player can afford it
+  // (never the MAX(0,…) clamp). Used for challenge/prediction escrow races.
+  debitIfEnough:       db.prepare('UPDATE users SET balance = balance - ? WHERE guild_id = ? AND user_id = ? AND balance >= ?'),
+
+  // Streak-freeze insurance (atomic guarded debit — must fail when unaffordable)
+  buyStreakFreeze:     db.prepare('UPDATE users SET balance = balance - ?, streak_freezes = streak_freezes + 1 WHERE guild_id = ? AND user_id = ? AND balance >= ? AND streak_freezes < ?'),
+  consumeStreakFreeze: db.prepare('UPDATE users SET streak_freezes = streak_freezes - 1 WHERE guild_id = ? AND user_id = ? AND streak_freezes > 0'),
+  setLastCrate:        db.prepare('UPDATE users SET last_crate = ? WHERE guild_id = ? AND user_id = ?'),
+  // First display-command view of the UTC day → atomic "claim" for a small XP nudge.
+  claimDailyViewXp:    db.prepare('UPDATE users SET last_view_xp = ? WHERE guild_id = ? AND user_id = ? AND (last_view_xp IS NULL OR last_view_xp <> ?)'),
+  setDmReminders:      db.prepare('UPDATE users SET dm_reminders = ? WHERE guild_id = ? AND user_id = ?'),
+  setLastReminded:     db.prepare('UPDATE users SET last_reminded = ? WHERE guild_id = ? AND user_id = ?'),
+  usersAtStreakRisk:   db.prepare('SELECT user_id, daily_streak, last_daily, last_reminded FROM users WHERE guild_id = ? AND dm_reminders = 1 AND daily_streak > 0 AND last_daily > 0'),
+
+  // bot_state — restart-safe once-per-period guard for scheduled jobs.
+  getBotState: db.prepare('SELECT period_key FROM bot_state WHERE guild_id = ? AND key = ?'),
+  // Flips the period only when it differs — returns changes=1 for exactly one caller per period.
+  claimBotPeriod: db.prepare(`
+    INSERT INTO bot_state (guild_id, key, period_key) VALUES (?, ?, ?)
+    ON CONFLICT(guild_id, key) DO UPDATE SET period_key = excluded.period_key WHERE bot_state.period_key <> excluded.period_key
+  `),
 
   // Achievements
   getAchievements:   db.prepare('SELECT code, unlocked_at FROM achievements WHERE guild_id = ? AND user_id = ?'),

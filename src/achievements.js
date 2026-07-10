@@ -12,6 +12,7 @@ export const ACHIEVEMENTS = [
   { code: 'whale',          name: 'Whale Alert',    emoji: '🐋', desc: 'Reach a $1,000,000 cash balance.' },
   { code: 'streak_7',       name: 'Committed',      emoji: '🔥', desc: 'Reach a 7-day daily streak.' },
   { code: 'streak_30',      name: 'Unstoppable',    emoji: '🌋', desc: 'Reach a 30-day daily streak.' },
+  { code: 'streak_100',     name: 'Centurion',      emoji: '💯', desc: 'Reach a 100-day daily streak.' },
 
   // ── Casino ──
   { code: 'jackpot',           name: 'Jackpot!',      emoji: '🎰', desc: 'Hit the slots jackpot.' },

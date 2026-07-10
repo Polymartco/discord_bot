@@ -1,7 +1,10 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { stmt } from '../../db.js';
-import { cash, brandEmbed, GREEN, errorEmbed } from '../../utils.js';
+import { cash, brandEmbed, GREEN, GOLD, errorEmbed } from '../../utils.js';
 import { ensureUser, checkCooldown, adjust, rand, pickOne, humanDuration } from '../../casinoLib.js';
+import { recordTimed, progressField } from '../../postTrade.js';
+import { progressQuests } from '../../quests.js';
+import { happyMultiplier } from '../../happyhour.js';
 
 const COOLDOWN = 600; // 10 minutes
 
@@ -32,11 +35,23 @@ export default {
     }
     stmt.setLastWork.run(cd.now, guildId, user.id);
 
-    const pay = rand(150, 600);
-    const bal = adjust(guildId, user.id, pay);
-    return interaction.reply({
-      embeds: [brandEmbed({ title: '💼 Work Shift Complete', color: GREEN, interaction })
-        .setDescription(`You ${pickOne(JOBS)} and earned **${cash(pay)}**.\nBalance: ${cash(bal)}`)],
-    });
+    // Variable-ratio surprise: ~8% of shifts pay a 3× "big tip" (bounded + cooldown-gated).
+    let pay = rand(150, 600);
+    const bigTip = Math.random() < 0.08;
+    if (bigTip) pay *= 3;
+    const hh = happyMultiplier(guildId);   // 2× faucet coins during Happy Hour
+    pay = Math.round(pay * hh);
+
+    adjust(guildId, user.id, pay);
+    const prog = recordTimed({ guildId, userId: user.id, kind: 'work' }); // XP + any level-up
+    try { prog.quests = progressQuests({ guildId, userId: user.id, source: 'work' }); } catch {}
+    const bal  = ensureUser(guildId, user.id).balance;
+
+    const desc = `You ${pickOne(JOBS)} and earned **${cash(pay)}**.` +
+      (bigTip ? '  💰 **Big tip — 3× paycheck!**' : '') +
+      (hh > 1 ? '  ⚡ **2× Happy Hour!**' : '') + `\nBalance: ${cash(bal)}`;
+    const e = brandEmbed({ title: '💼 Work Shift Complete', color: bigTip ? GOLD : GREEN, interaction }).setDescription(desc);
+    const f = progressField(prog); if (f) e.addFields(f);
+    return interaction.reply({ embeds: [e] });
   },
 };

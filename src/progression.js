@@ -27,7 +27,26 @@ export function xpForTrade(total = 0) {
   return Math.min(100, 20 + Math.floor(Math.abs(total) / 1000));
 }
 
+/**
+ * XP for a settled casino game. Scales with the bet but hard-caps at 60, so
+ * 1-coin spam earns near-nothing (vanity only) while real bets feel rewarding.
+ */
+export function xpForBet(bet = 0) {
+  return Math.min(60, 5 + Math.floor(Math.abs(bet) / 500));
+}
+
+/**
+ * One-time coin bonus for *reaching* a level. Paid exactly once per level
+ * because XP is monotonic (each threshold is crossed once), so this can never
+ * be farmed into a coin faucet. Scales gently with level.
+ */
+export function levelUpReward(level) {
+  return 100 * Math.max(0, level);
+}
+
 export const XP_DAILY = 30;
+export const XP_WORK  = 25;
+export const XP_BEG   = 8;
 
 // ── Rank titles by level band ─────────────────────────────────────────────────
 const RANKS = [

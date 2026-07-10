@@ -1,8 +1,8 @@
-import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
-import { cash, GREEN, RED, errorEmbed, polish } from '../../utils.js';
+import { SlashCommandBuilder } from 'discord.js';
+import { errorEmbed } from '../../utils.js';
 import { ValidationError } from '../../validate.js';
-import { ensureUser, validateBet, adjust } from '../../casinoLib.js';
-import { recordGame, unlockField } from '../../casinoStats.js';
+import { ensureUser, validateBet } from '../../casinoLib.js';
+import { playCoinflip } from '../../casinoGames.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -26,24 +26,6 @@ export default {
       throw err;
     }
 
-    adjust(guildId, user.id, -bet);
-
-    const flip = Math.random() < 0.5 ? 'heads' : 'tails';
-    const won  = flip === side;
-    const bal  = won ? adjust(guildId, user.id, bet * 2) : ensureUser(guildId, user.id).balance;
-    const unlocked = recordGame({ guildId, userId: user.id, bet, net: won ? bet : -bet });
-
-    const embed = new EmbedBuilder()
-      .setTitle(`🪙 Coinflip — ${flip === 'heads' ? '👑 Heads' : '🪙 Tails'}`)
-      .setColor(won ? GREEN : RED)
-      .addFields(
-        { name: 'You called', value: side === 'heads' ? '👑 Heads' : '🪙 Tails', inline: true },
-        { name: won ? 'Won' : 'Lost', value: cash(bet), inline: true },
-        { name: 'Balance', value: cash(bal), inline: true },
-      );
-    const f = unlockField(unlocked); if (f) embed.addFields(f);
-    polish(embed, interaction);
-
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply(playCoinflip(guildId, user, bet, side, interaction));
   },
 };

@@ -4,9 +4,13 @@ import { readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { startAlertPoller } from './alertPoller.js';
+import { startScheduler } from './scheduler.js';
 import { handleInteraction } from './interactionRouter.js';
-import './paginator.js';   // side-effect: registers the 'page' component handler
-import './components.js';  // side-effect: registers 'trade' / 'view' component handlers
+import './paginator.js';      // side-effect: registers the 'page' component handler
+import './components.js';     // side-effect: registers 'trade' / 'view' component handlers
+import './casinoActions.js';       // side-effect: registers the 'again' (rebet) component handler
+import './questComponents.js';     // side-effect: registers the 'quest' claim component handler
+import './challengeComponents.js'; // side-effect: registers the 'duel' accept/decline handler
 import db from './db.js';
 
 // ── Environment validation ────────────────────────────────────────────────────
@@ -56,6 +60,7 @@ console.log(`[Startup] Loaded ${client.commands.size} commands.`);
 client.once('ready', () => {
   console.log(`[Bot] Logged in as ${client.user.tag}`);
   startAlertPoller(client);
+  startScheduler(client);
 });
 
 // All interaction types (commands, autocomplete, buttons, selects) flow through

@@ -3,6 +3,8 @@ import { stmt } from './db.js';
 import { api } from './api.js';
 import { botApi } from './botApi.js';
 import { colorOf, cash, polish } from './utils.js';
+import { settlePredictions } from './predictions.js';
+import { sweepExpiredChallenges } from './challengeEngine.js';
 
 // ── Back-off state ────────────────────────────────────────────────────────────
 const failState = { consecutiveErrors: 0, backoffUntil: 0 };
@@ -13,9 +15,11 @@ const CHANNEL_MUTE_AFTER = 3;
 const CHANNEL_MUTE_MS    = 3_600_000; // 1 hour
 
 export function startAlertPoller(client) {
-  setInterval(() => runAlertCheck(client).catch(err => {
-    console.error('[AlertPoller] Unhandled error:', err);
-  }), 12_000);
+  setInterval(() => {
+    runAlertCheck(client).catch(err => console.error('[AlertPoller] Unhandled error:', err));
+    settlePredictions(client).catch(err => console.error('[Predict] settle error:', err));
+    sweepExpiredChallenges(client).catch(err => console.error('[Duel] sweep error:', err));
+  }, 12_000);
 }
 
 async function runAlertCheck(client) {
