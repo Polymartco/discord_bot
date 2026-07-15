@@ -1,6 +1,6 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { api } from './api.js';
-import { chartAttachment, sign, colorOf, polish } from './utils.js';
+import { chartAttachment, colorOf, deltaBadge, sparkline, ICON, polish } from './utils.js';
 import { buildId } from './interactionRouter.js';
 
 // ── Shared trade button row ───────────────────────────────────────────────────
@@ -43,25 +43,32 @@ export async function buildStockCard(interaction, rawTicker, type = 'stock') {
   const atr     = s.atr     != null ? s.atr.toFixed(2)  : '—';
   const label   = `${ticker} — ${s.name ?? ticker}`;
 
-  const att   = chartAttachment(Array.isArray(s.history) ? s.history : [], label, price, change);
+  const history = Array.isArray(s.history) ? s.history : [];
+  const dir     = change > 0 ? ICON.up : change < 0 ? ICON.down : '▬';
+  const spark   = sparkline(history);
+
+  // Second line under the price headline: sector chip + a mini sparkline (either
+  // may be absent). Kept on its own line so it never inflates the ## heading.
+  const hasSector = sector !== '—';
+  const subline   = [hasSector ? `\`${sector}\`` : null, spark || null].filter(Boolean).join('  ');
+
+  const att   = chartAttachment(history, label, price, change);
   const embed = new EmbedBuilder()
-    .setTitle(label)
+    .setTitle(`${dir}  ${label}`)
     .setColor(colorOf(change))
+    .setDescription(`## $${price.toFixed(2)}  ${deltaBadge(change)}` + (subline ? `\n${subline}` : ''))
     .addFields(
-      { name: 'Price',     value: `$${price.toFixed(2)}`, inline: true },
-      { name: 'Change',    value: sign(change),           inline: true },
-      { name: 'RSI',       value: rsi,                    inline: true },
-      { name: 'Volume',    value: volume,                 inline: true },
-      { name: 'Sector',    value: sector,                 inline: true },
-      { name: 'Streak',    value: streak,                 inline: true },
-      { name: '52w Hi',    value: high52w,                inline: true },
-      { name: '52w Lo',    value: low52w,                 inline: true },
-      { name: 'ATH',       value: ath,                    inline: true },
-      { name: 'Bid / Ask', value: bidAsk,                 inline: true },
-      { name: 'MACD',      value: macd,                   inline: true },
-      { name: 'BB Width',  value: bbBw,                   inline: true },
+      { name: 'RSI',           value: rsi,     inline: true },
+      { name: 'Volume',        value: volume,  inline: true },
+      { name: 'Streak',        value: streak,  inline: true },
+      { name: '52W High',      value: high52w, inline: true },
+      { name: '52W Low',       value: low52w,  inline: true },
+      { name: 'All-Time High', value: ath,     inline: true },
+      { name: 'Bid / Ask',     value: bidAsk,  inline: true },
+      { name: 'MACD',          value: macd,    inline: true },
+      { name: 'BB Width',      value: bbBw,    inline: true },
     )
-    .setFooter({ text: `VWAP $${vwap} • Beta ${beta} • ATR ${atr}` });
+    .setFooter({ text: `VWAP $${vwap}  ·  Beta ${beta}  ·  ATR ${atr}` });
 
   if (att) embed.setImage('attachment://chart.png');
   polish(embed, interaction);

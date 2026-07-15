@@ -2,9 +2,11 @@ import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getOrCreateUser, stmt, getConfig } from '../../db.js';
 import { botApi } from '../../botApi.js';
 import { api, ApiError } from '../../api.js';
-import { cash, colorOf, GOLD, BLUE, errorEmbed, polish } from '../../utils.js';
+import { cash, colorOf, deltaBadge, userAuthor, ICON, errorEmbed, polish } from '../../utils.js';
 import { rankTitle, levelFromXp } from '../../progression.js';
 import { dailyViewXp, progressField } from '../../postTrade.js';
+
+const blank = { name: '​', value: '​', inline: true }; // spacer to keep rows of 3 aligned
 
 export default {
   data: new SlashCommandBuilder()
@@ -27,19 +29,21 @@ export default {
         const invested  = positions.reduce((s, p) => s + (p.shares ?? p.quantity ?? 0) * (p.avgCost ?? 0), 0);
         const unrealised = portValue - invested;
         const total     = cashBal + portValue;
+        const pnlPct    = invested > 0 ? (unrealised / invested) * 100 : 0;
 
         const embed = new EmbedBuilder()
-          .setTitle(`${user.username}'s Account`)
+          .setAuthor(userAuthor(interaction, `${user.username} · Account`))
           .setColor(colorOf(unrealised))
+          .setDescription(`## ${cash(total)}\n${ICON.bank} Net worth  ·  ${deltaBadge(pnlPct)} unrealised`)
           .addFields(
-            { name: 'Cash Balance',    value: cash(cashBal),          inline: true },
-            { name: 'Portfolio Value', value: cash(portValue),        inline: true },
-            { name: 'Total Value',     value: cash(total),            inline: true },
-            { name: 'Invested',        value: cash(invested),         inline: true },
-            { name: 'Unrealised P&L',  value: cash(unrealised),       inline: true },
+            { name: 'Cash Balance',    value: cash(cashBal),            inline: true },
+            { name: 'Portfolio Value', value: cash(portValue),          inline: true },
             { name: 'Holdings',        value: String(positions.length), inline: true },
+            { name: 'Invested',        value: cash(invested),           inline: true },
+            { name: 'Unrealised P&L',  value: `${cash(unrealised)}`,    inline: true },
+            blank,
           )
-          .setFooter({ text: '🔗 Synced from polymart.co' });
+          .setFooter({ text: `${ICON.link} Synced from polymart.co` });
 
         return interaction.editReply({ embeds: [polish(embed, interaction)] });
       } catch (err) {
@@ -82,25 +86,30 @@ export default {
     const totalValue = dbUser.balance + portfolioValue;
     const invested   = holdings.reduce((s, h) => s + h.shares * h.avg_cost, 0);
     const unrealised = portfolioValue - invested;
+    const pnlPct     = invested > 0 ? (unrealised / invested) * 100 : 0;
 
     const rank = rankTitle(levelFromXp(dbUser.xp ?? 0));
 
     const embed = new EmbedBuilder()
-      .setTitle(`${user.username}'s Account`)
+      .setAuthor(userAuthor(interaction, `${user.username} · Account`))
       .setColor(colorOf(unrealised))
+      .setDescription(
+        `## ${cash(totalValue)}\n${ICON.bank} Net worth` +
+        (invested > 0 ? `  ·  ${deltaBadge(pnlPct)} unrealised` : ''),
+      )
       .addFields(
         { name: 'Cash Balance',    value: cash(dbUser.balance),    inline: true },
         { name: 'Portfolio Value', value: cash(portfolioValue),    inline: true },
-        { name: 'Total Value',     value: cash(totalValue),        inline: true },
+        { name: 'Holdings',        value: String(holdings.length), inline: true },
         { name: 'Invested',        value: cash(invested),          inline: true },
         { name: 'Unrealised P&L',  value: cash(unrealised),        inline: true },
-        { name: 'Holdings',        value: String(holdings.length), inline: true },
-        { name: 'Level',           value: `${rank.emoji} L${dbUser.level ?? 1} · ${rank.title}`, inline: true },
-        { name: 'Daily Streak',    value: `🔥 ${dbUser.daily_streak ?? 0}`, inline: true },
+        { name: 'Rank',            value: `${rank.emoji} L${dbUser.level ?? 1} · ${rank.title}`, inline: true },
+        { name: 'Daily Streak',    value: `${ICON.fire} ${dbUser.daily_streak ?? 0} day${(dbUser.daily_streak ?? 0) === 1 ? '' : 's'}`, inline: true },
+        blank, blank,
       );
 
     if (staleCount > 0) {
-      embed.setFooter({ text: `⚠️ ${staleCount} holding(s) using cost basis — live price unavailable` });
+      embed.setFooter({ text: `${ICON.warn} ${staleCount} holding(s) using cost basis — live price unavailable` });
     }
 
     // Small once-a-day XP for checking in (period-guarded — never a faucet).

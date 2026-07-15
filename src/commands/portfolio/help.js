@@ -70,6 +70,7 @@ export default {
     }
 
     const embed = brandEmbed({ title: '📖 Polymart — Command Guide', color: BLUE, interaction })
+      .setThumbnail(client.user.displayAvatarURL())
       .setDescription(
         `Here's everything I can do. Use \`/help category:<name>\` for the full list in a section.\n` +
         `New here? An admin should run \`/setup\` first, then grab your starting cash with \`/daily\`.`,

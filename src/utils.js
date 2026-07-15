@@ -1,15 +1,14 @@
 import { EmbedBuilder, AttachmentBuilder } from 'discord.js';
 
-// Embed accent colors — match chart palette
-export const GREEN = 0x2ecc71;
-export const RED   = 0xe74c3c;
-export const BLUE  = 0x5865f2;
-export const GOLD  = 0xf59e0b;
+// Palette + text primitives live in the design system (theme.js). Re-exported
+// here so the many `import { ... } from '../utils.js'` call-sites keep working
+// and every embed shares one visual language with the rendered cards.
+export { GREEN, RED, BLUE, GOLD, BRAND, SLATE, colorOf, ICON, RULE, arrow, deltaBadge, meter, sparkline } from './theme.js';
+import { GREEN, RED, BLUE, GOLD, BRAND, ICON } from './theme.js';
 
 export const sign     = n => `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
 export const cash     = n => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 export const priceFmt = (n, decimals = 4) => n < 1 ? n.toFixed(5) : n < 100 ? n.toFixed(decimals) : n.toFixed(2);
-export const colorOf  = n => n >= 0 ? GREEN : RED;
 
 /** Compact money for large figures: $1.2M / $3.4K. Falls back to cash() under $1k. */
 export function compact(n) {
@@ -96,33 +95,66 @@ export function leaderboardCardAttachment(rows, opts) {
 }
 
 // ── Embed helpers ─────────────────────────────────────────────────────────────
+const BRAND_NAME = 'Polymart';
+
 /**
  * Stamp a timestamp + "Polymart" brand mark onto an embed, preserving any
- * footer text already set (appended as "<existing> • Polymart"). Pass
+ * footer text already set (appended as "<existing>  ·  Polymart"). Pass
  * `interaction` to use the bot avatar as the footer icon. Mutates and returns
  * the same embed so it can be used inline: `embeds: [polish(embed, interaction)]`.
  */
 export function polish(embed, interaction) {
   const icon     = interaction?.client?.user?.displayAvatarURL?.();
   const existing = embed.data?.footer?.text;
-  embed.setFooter({ text: existing ? `${existing} • Polymart` : 'Polymart', ...(icon ? { iconURL: icon } : {}) });
+  embed.setFooter({ text: existing ? `${existing}  ·  ${BRAND_NAME}` : BRAND_NAME, ...(icon ? { iconURL: icon } : {}) });
   if (!embed.data?.timestamp) embed.setTimestamp();
   return embed;
 }
 
+/**
+ * Author block for a personal embed: the member's name + avatar sitting above
+ * the embed body — a clean, professional "whose data is this" header. Falls back
+ * to a plain name if no avatar is resolvable.
+ */
+export function userAuthor(interaction, name) {
+  const u        = interaction?.user;
+  const iconURL  = u?.displayAvatarURL?.();
+  const authName = name ?? u?.username ?? BRAND_NAME;
+  return iconURL ? { name: authName, iconURL } : { name: authName };
+}
+
+/**
+ * A compact notice embed (error / success / info / warn). Kept intentionally
+ * minimal — a colored accent bar, one icon, one line — so transient replies read
+ * cleanly. `kind` selects the accent + icon.
+ */
+export function noticeEmbed(message, { kind = 'info', interaction, title } = {}) {
+  const style = {
+    error:   { color: RED,   icon: ICON.err },
+    success: { color: GREEN, icon: ICON.ok },
+    warn:    { color: GOLD, icon: ICON.warn },
+    info:    { color: BRAND, icon: ICON.spark },
+  }[kind] ?? { color: BRAND, icon: ICON.spark };
+
+  const embed = new EmbedBuilder().setColor(style.color);
+  if (title) embed.setTitle(`${style.icon}  ${title}`).setDescription(message);
+  else       embed.setDescription(`${style.icon}  ${message}`);
+  return polish(embed, interaction);
+}
+
 export function errorEmbed(message, interaction) {
-  return polish(new EmbedBuilder().setColor(RED).setDescription(`❌ ${message}`), interaction);
+  return noticeEmbed(message, { kind: 'error', interaction });
 }
 
 export function successEmbed(message, interaction) {
-  return polish(new EmbedBuilder().setColor(GREEN).setDescription(`✅ ${message}`), interaction);
+  return noticeEmbed(message, { kind: 'success', interaction });
 }
 
 /**
  * Branded embed with a consistent palette colour, timestamp, and "Polymart" footer.
  * Pass `interaction` to stamp the bot avatar into the footer icon.
  */
-export function brandEmbed({ title, color = BLUE, interaction } = {}) {
+export function brandEmbed({ title, color = BRAND, interaction } = {}) {
   const embed = new EmbedBuilder().setColor(color);
   if (title) embed.setTitle(title);
   return polish(embed, interaction);

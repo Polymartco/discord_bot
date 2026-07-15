@@ -1,6 +1,6 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { buildId } from './interactionRouter.js';
-import { cash, compact, GREEN, RED, GOLD, polish } from './utils.js';
+import { cash, compact, GREEN, RED, GOLD, ICON, polish } from './utils.js';
 import { ensureUser, adjust } from './casinoLib.js';
 import {
   recordGame, casinoProgressField,
@@ -44,12 +44,16 @@ export function playCoinflip(guildId, user, bet, side, interaction) {
   const settle = recordGame({ guildId, userId: user.id, bet, net: won ? bet : -bet, game: 'coinflip' });
   const bal    = ensureUser(guildId, user.id).balance;
 
+  const face = f => (f === 'heads' ? '👑 Heads' : '🪙 Tails');
   const embed = new EmbedBuilder()
-    .setTitle(`🪙 Coinflip — ${flip === 'heads' ? '👑 Heads' : '🪙 Tails'}`)
+    .setTitle('🪙 Coinflip')
     .setColor(won ? GREEN : RED)
+    .setDescription(
+      `You called **${face(side)}** — landed on **${face(flip)}**\n` +
+      (won ? `## ${ICON.money} Won ${cash(bet)}` : `## Lost ${cash(bet)}`),
+    )
     .addFields(
-      { name: 'You called', value: side === 'heads' ? '👑 Heads' : '🪙 Tails', inline: true },
-      { name: won ? 'Won' : 'Lost', value: cash(bet), inline: true },
+      { name: 'Bet',     value: cash(bet), inline: true },
       { name: 'Balance', value: cash(bal), inline: true },
     );
   const f = casinoProgressField(settle); if (f) embed.addFields(f);
@@ -170,12 +174,15 @@ export function playRoulette(guildId, user, bet, space, interaction) {
   const spaceArg = space.kind === 'number' ? String(space.value) : space.value;
 
   const embed = new EmbedBuilder()
-    .setTitle(`🎡 Roulette — ${R_EMOJI[rColor(result)]} ${result} (${rColor(result)})`)
+    .setTitle('🎡 Roulette')
     .setColor(won ? GREEN : RED)
+    .setDescription(
+      `The ball landed on ${R_EMOJI[rColor(result)]} **${result}** ${rColor(result)}\n` +
+      (won ? `## ${ICON.money} Won ${cash(net)}` : `## Lost ${cash(bet)}`),
+    )
     .addFields(
       { name: 'Your bet', value: `${cash(bet)} on **${pick}**`, inline: true },
-      { name: won ? 'Won' : 'Lost', value: won ? cash(net) : cash(bet), inline: true },
-      { name: 'Balance', value: cash(bal), inline: true },
+      { name: 'Balance',  value: cash(bal),                     inline: true },
     );
   const f = casinoProgressField(settle); if (f) embed.addFields(f);
   polish(embed, interaction);

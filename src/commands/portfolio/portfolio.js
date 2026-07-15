@@ -2,7 +2,7 @@ import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getOrCreateUser, stmt, getConfig } from '../../db.js';
 import { botApi } from '../../botApi.js';
 import { api } from '../../api.js';
-import { cash, sign, priceFmt, BLUE, errorEmbed, portfolioDonutAttachment, polish } from '../../utils.js';
+import { cash, priceFmt, colorOf, deltaBadge, arrow, userAuthor, ICON, errorEmbed, portfolioDonutAttachment, polish } from '../../utils.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -25,6 +25,7 @@ export default {
           return interaction.editReply({ embeds: [errorEmbed('You have no open positions on Polymart. Use `/buy` to start trading.')] });
         }
 
+        let totalValue = 0, totalCost = 0;
         const fields = positions.map(p => {
           const sym    = p.symbol ?? p.ticker ?? '?';
           const type   = p.assetType ?? 'stock';
@@ -33,18 +34,21 @@ export default {
           const value  = p.value ?? shares * (p.currentPrice ?? avg);
           const pnl    = p.pnl ?? (value - shares * avg);
           const pnlPct = p.pnlPct ?? (avg > 0 ? ((p.currentPrice ?? avg) - avg) / avg * 100 : 0);
+          totalValue += value; totalCost += shares * avg;
           return {
-            name:   `${sym} (${type})`,
-            value:  `${shares.toLocaleString()} shares @ avg ${cash(avg)}\nValue: ${cash(value)} • P&L: ${cash(pnl)} (${sign(pnlPct)})`,
+            name:   `${arrow(pnl)}  ${sym} · ${type}`,
+            value:  `${shares.toLocaleString()} @ ${cash(avg)}  →  **${cash(value)}**\n${cash(pnl)}  ${deltaBadge(pnlPct)}`,
             inline: false,
           };
         });
 
+        const totalPnl = totalValue - totalCost;
         const embed = new EmbedBuilder()
-          .setTitle(`${user.username}'s Portfolio`)
-          .setColor(BLUE)
+          .setAuthor(userAuthor(interaction, `${user.username} · Portfolio`))
+          .setColor(colorOf(totalPnl))
+          .setDescription(`## ${cash(totalValue)}\n${ICON.chart} ${positions.length} position${positions.length === 1 ? '' : 's'}  ·  ${cash(totalPnl)} ${deltaBadge(totalCost > 0 ? totalPnl / totalCost * 100 : 0)}`)
           .addFields(fields)
-          .setFooter({ text: '🔗 Synced from polymart.co' });
+          .setFooter({ text: `${ICON.link} Synced from polymart.co` });
 
         return interaction.editReply({ embeds: [polish(embed, interaction)] });
       } catch (err) {
@@ -73,6 +77,7 @@ export default {
     );
 
     let staleCount = 0;
+    let totalValue = 0, totalCost = 0;
     const slices = [];
     const fields = holdings.map((h, i) => {
       let price = h.avg_cost;
@@ -89,24 +94,27 @@ export default {
       const cost   = h.shares * h.avg_cost;
       const pnl    = value - cost;
       const pnlPct = cost > 0 ? (pnl / cost) * 100 : 0;
-      const staleTag = isStale ? ' ⚠️' : '';
+      const staleTag = isStale ? ` ${ICON.warn}` : '';
+      totalValue += value; totalCost += cost;
 
       slices.push({ label: h.ticker, value });
 
       return {
-        name:   `${h.ticker} (${h.asset_type})${staleTag}`,
-        value:  `${h.shares.toLocaleString()} shares @ avg ${cash(h.avg_cost)}\nNow: ${priceFmt(price)} | Value: ${cash(value)}\nP&L: ${cash(pnl)} (${sign(pnlPct)})`,
+        name:   `${arrow(pnl)}  ${h.ticker} · ${h.asset_type}${staleTag}`,
+        value:  `${h.shares.toLocaleString()} @ ${cash(h.avg_cost)}  →  **${cash(value)}**  \`${priceFmt(price)}\`\n${cash(pnl)}  ${deltaBadge(pnlPct)}`,
         inline: false,
       };
     });
 
+    const totalPnl = totalValue - totalCost;
     const embed = new EmbedBuilder()
-      .setTitle(`${user.username}'s Portfolio`)
-      .setColor(BLUE)
+      .setAuthor(userAuthor(interaction, `${user.username} · Portfolio`))
+      .setColor(colorOf(totalPnl))
+      .setDescription(`## ${cash(totalValue)}\n${ICON.chart} ${holdings.length} position${holdings.length === 1 ? '' : 's'}  ·  ${cash(totalPnl)} ${deltaBadge(totalCost > 0 ? totalPnl / totalCost * 100 : 0)}`)
       .addFields(fields);
 
     if (staleCount > 0) {
-      embed.setFooter({ text: `⚠️ ${staleCount} position(s) showing cost basis — live price temporarily unavailable` });
+      embed.setFooter({ text: `${ICON.warn} ${staleCount} position(s) showing cost basis — live price temporarily unavailable` });
     }
 
     // Allocation donut (degrades to no image if canvas is unavailable).
